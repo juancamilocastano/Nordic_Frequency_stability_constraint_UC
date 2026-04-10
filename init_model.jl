@@ -120,7 +120,7 @@ function define_sets!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame)
 #     CV_contingencies = Dict("CV" * conv_id => data["convdc"][conv_id]["area"] for conv_id in CV)
 #     # Join contingencies dictionary
 #     all_contingencies = m.ext[:sets][:all_contingencies] = merge(G_contingencies, CV_contingencies)
-    all_contingencies = G_contingencies
+    all_contingencies = m.ext[:sets][:all_contingencies] = G_contingencies
      return 
 
 
@@ -154,14 +154,14 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     all_contingencies = m.ext[:sets][:all_contingencies]
 
 
-    ND = m.ext[:sets][:ND]
-    BD = m.ext[:sets][:BD]
-    CV = m.ext[:sets][:CV] 
-    CV1 = m.ext[:sets][:CV1] 
-    CV2 = m.ext[:sets][:CV2] 
-    CV_arcs = m.ext[:sets][:CV_arcs] 
-    BD_dc_fr = m.ext[:sets][:BD_dc_fr]
-    BD_dc_to = m.ext[:sets][:BD_dc_to]
+    # ND = m.ext[:sets][:ND]
+    # BD = m.ext[:sets][:BD]
+    # CV = m.ext[:sets][:CV] 
+    # CV1 = m.ext[:sets][:CV1] 
+    # CV2 = m.ext[:sets][:CV2] 
+    # CV_arcs = m.ext[:sets][:CV_arcs] 
+    # BD_dc_fr = m.ext[:sets][:BD_dc_fr]
+    # BD_dc_to = m.ext[:sets][:BD_dc_to]
     E= m.ext[:sets][:E]
     E1= m.ext[:sets][:E1]
     E2= m.ext[:sets][:E2]
@@ -184,11 +184,11 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
 
     #Frequency stability parameters
     f1= m.ext[:parameters][:f1]= data["frequency1"]
-    f2= m.ext[:parameters][:f2]= data["frequency2"]
-    rocof1= m.ext[:parameters][:rocof1]= data["rocof1"]
-    rocof2= m.ext[:parameters][:rocof2]= data["rocof2"]
-    deltaf1= m.ext[:parameters][:deltaf1]= data["deltaf1"]
-    deltaf2= m.ext[:parameters][:deltaf2]= data["deltaf2"]
+    # f2= m.ext[:parameters][:f2]= data["frequency2"]
+    #rocof1= m.ext[:parameters][:rocof1]= data["rocof1"]
+    # rocof2= m.ext[:parameters][:rocof2]= data["rocof2"]
+    deltaf= m.ext[:parameters][:deltaf]= data["deltaf"]
+    # deltaf2= m.ext[:parameters][:deltaf2]= data["deltaf2"]
 
     #Demand input
     n = nrow(ts)
@@ -340,72 +340,72 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     ####################################################################################################
     ####################    DC NETWORK ELEMENTS
     ####################################################################################################
-    if !isempty(data["busdc"])
+    # if !isempty(data["busdc"])
 
-        m.ext[:parameters][:busdc] = Dict()
-        m.ext[:parameters][:busdc][:vm_max] = Dict(busdc_id => busdc["Vdcmax"] for (busdc_id,busdc) in data["busdc"])
-        m.ext[:parameters][:busdc][:vm_min] = Dict(busdc_id => busdc["Vdcmin"] for (busdc_id,busdc) in data["busdc"])
-        m.ext[:parameters][:busdc][:vm_set] = Dict(busdc_id => busdc["Vdc"] for (busdc_id,busdc) in data["busdc"])
-        m.ext[:parameters][:busdc][:c] = Dict(busdc_id => busdc["Cdc"] for (busdc_id,busdc) in data["busdc"])
-        m.ext[:parameters][:busdc][:p] = Dict(busdc_id => busdc["Pdc"] for (busdc_id,busdc) in data["busdc"])
+    #     m.ext[:parameters][:busdc] = Dict()
+    #     m.ext[:parameters][:busdc][:vm_max] = Dict(busdc_id => busdc["Vdcmax"] for (busdc_id,busdc) in data["busdc"])
+    #     m.ext[:parameters][:busdc][:vm_min] = Dict(busdc_id => busdc["Vdcmin"] for (busdc_id,busdc) in data["busdc"])
+    #     m.ext[:parameters][:busdc][:vm_set] = Dict(busdc_id => busdc["Vdc"] for (busdc_id,busdc) in data["busdc"])
+    #     m.ext[:parameters][:busdc][:c] = Dict(busdc_id => busdc["Cdc"] for (busdc_id,busdc) in data["busdc"])
+    #     m.ext[:parameters][:busdc][:p] = Dict(busdc_id => busdc["Pdc"] for (busdc_id,busdc) in data["busdc"])
 
-        m.ext[:parameters][:convdc] = Dict()
-        m.ext[:parameters][:convdc][:busdc] = Dict(conv_id => string(conv["busdc_i"]) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:status] = Dict(conv_id => conv["status"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:bus] = Dict(conv_id => string(conv["busac_i"]) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:bases] = bases = Dict(conv_id => get_pu_buses(baseMVA,conv["basekVac"]) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:loss_a] = Dict(conv_id => conv["LossA"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"]) # pu
-        m.ext[:parameters][:convdc][:loss_b] = Dict(conv_id => conv["LossB"]/bases[conv_id]["basekV3p"] for (conv_id,conv) in data["convdc"]) # pu
-        m.ext[:parameters][:convdc][:loss_c_inv] = Dict(conv_id => conv["LossCinv"]/bases[conv_id]["baseZ"] for (conv_id,conv) in data["convdc"]) # pu
-        m.ext[:parameters][:convdc][:loss_c_rec] = Dict(conv_id => conv["LossCrec"]/bases[conv_id]["baseZ"] for (conv_id,conv) in data["convdc"]) # pu
-        m.ext[:parameters][:convdc][:p_ac_max] = Dict(conv_id => conv["Pacmax"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:p_ac_min] = Dict(conv_id => conv["Pacmin"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:q_ac_max] = Dict(conv_id => conv["Qacmax"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:q_ac_min] = Dict(conv_id => conv["Qacmin"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:p_dc_max] = Dict(conv_id => conv["Pacmax"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:p_dc_min] = Dict(conv_id => conv["Pacmin"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:droop] = Dict(conv_id => conv["droop"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:HVDC_deployment] = Dict(conv_id => conv["DT"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:HVDC_reservecost] = Dict(conv_id => conv["reservecost"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:i_max] = Dict()
-        for (conv_id,conv) in data["convdc"]   
-            pacrated = max(abs(conv["Pacmax"]/bases[conv_id]["baseMVA"]),abs(conv["Pacmin"]/bases[conv_id]["baseMVA"]))
-            qacrated = max(abs(conv["Qacmax"]/bases[conv_id]["baseMVA"]),abs(conv["Qacmin"]/bases[conv_id]["baseMVA"]))
-            if conv["Imax"] < sqrt(pacrated^2 + qacrated^2)
-                m.ext[:parameters][:convdc][:i_max][conv_id] = sqrt(pacrated^2+qacrated^2)
-            else
-                m.ext[:parameters][:convdc][:i_max][conv_id] = conv["Imax"]
-            end
-        end
-        m.ext[:parameters][:convdc][:vm_min] = Dict(conv_id => conv["Vmmin"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:vm_max] = Dict(conv_id => conv["Vmmax"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:vm_dc_set] = Dict(conv_id => conv["Vdcset"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:p_g] = Dict(conv_id => conv["P_g"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:q_g] = Dict(conv_id => conv["Q_g"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:b_f] = Dict(conv_id => conv["bf"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:r_tf] = Dict(conv_id => conv["rtf"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:g_tf] = Dict(conv_id => real(1/(conv["rtf"]+conv["xtf"]*im)) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:x_tf] = Dict(conv_id => conv["xtf"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:b_tf] = Dict(conv_id => imag(1/(conv["rtf"]+conv["xtf"]*im)) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:r_pr] = Dict(conv_id => conv["rc"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:g_pr] = Dict(conv_id => real(1/(conv["rc"]+conv["xc"]*im)) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:x_pr] = Dict(conv_id => conv["xc"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:b_pr] = Dict(conv_id => imag(1/(conv["rc"]+conv["xc"]*im)) for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:is_tf] = Dict(conv_id => conv["transformer"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:is_pr] = Dict(conv_id => conv["reactor"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:is_filter] = Dict(conv_id => conv["filter"] for (conv_id,conv) in data["convdc"])
-        m.ext[:parameters][:convdc][:tap_tf] = Dict(conv_id => conv["tm"] for (conv_id,conv) in data["convdc"])
-        # DC branches
-        m.ext[:parameters][:branchdc] = Dict()
-        m.ext[:parameters][:branchdc][:rate_a] = Dict(br_id => br["rateA"]/baseMVA for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:rate_b] = Dict(br_id => br["rateB"]/baseMVA for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:rate_c] = Dict(br_id => br["rateC"]/baseMVA for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:status] = Dict(br_id => br["status"] for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:r] = Dict(br_id => br["r"] for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:g] = Dict(br_id => 1/br["r"] for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:l] = Dict(br_id => br["l"] for (br_id,br) in data["branchdc"])
-        m.ext[:parameters][:branchdc][:dcpoles] = Dict(br_id => data["dcpol"] for (br_id,br) in data["branchdc"])
-    end
+    #     m.ext[:parameters][:convdc] = Dict()
+    #     m.ext[:parameters][:convdc][:busdc] = Dict(conv_id => string(conv["busdc_i"]) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:status] = Dict(conv_id => conv["status"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:bus] = Dict(conv_id => string(conv["busac_i"]) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:bases] = bases = Dict(conv_id => get_pu_buses(baseMVA,conv["basekVac"]) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:loss_a] = Dict(conv_id => conv["LossA"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"]) # pu
+    #     m.ext[:parameters][:convdc][:loss_b] = Dict(conv_id => conv["LossB"]/bases[conv_id]["basekV3p"] for (conv_id,conv) in data["convdc"]) # pu
+    #     m.ext[:parameters][:convdc][:loss_c_inv] = Dict(conv_id => conv["LossCinv"]/bases[conv_id]["baseZ"] for (conv_id,conv) in data["convdc"]) # pu
+    #     m.ext[:parameters][:convdc][:loss_c_rec] = Dict(conv_id => conv["LossCrec"]/bases[conv_id]["baseZ"] for (conv_id,conv) in data["convdc"]) # pu
+    #     m.ext[:parameters][:convdc][:p_ac_max] = Dict(conv_id => conv["Pacmax"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:p_ac_min] = Dict(conv_id => conv["Pacmin"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:q_ac_max] = Dict(conv_id => conv["Qacmax"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:q_ac_min] = Dict(conv_id => conv["Qacmin"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:p_dc_max] = Dict(conv_id => conv["Pacmax"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:p_dc_min] = Dict(conv_id => conv["Pacmin"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:droop] = Dict(conv_id => conv["droop"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:HVDC_deployment] = Dict(conv_id => conv["DT"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:HVDC_reservecost] = Dict(conv_id => conv["reservecost"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:i_max] = Dict()
+    #     for (conv_id,conv) in data["convdc"]   
+    #         pacrated = max(abs(conv["Pacmax"]/bases[conv_id]["baseMVA"]),abs(conv["Pacmin"]/bases[conv_id]["baseMVA"]))
+    #         qacrated = max(abs(conv["Qacmax"]/bases[conv_id]["baseMVA"]),abs(conv["Qacmin"]/bases[conv_id]["baseMVA"]))
+    #         if conv["Imax"] < sqrt(pacrated^2 + qacrated^2)
+    #             m.ext[:parameters][:convdc][:i_max][conv_id] = sqrt(pacrated^2+qacrated^2)
+    #         else
+    #             m.ext[:parameters][:convdc][:i_max][conv_id] = conv["Imax"]
+    #         end
+    #     end
+    #     m.ext[:parameters][:convdc][:vm_min] = Dict(conv_id => conv["Vmmin"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:vm_max] = Dict(conv_id => conv["Vmmax"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:vm_dc_set] = Dict(conv_id => conv["Vdcset"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:p_g] = Dict(conv_id => conv["P_g"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:q_g] = Dict(conv_id => conv["Q_g"]/bases[conv_id]["baseMVA"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:b_f] = Dict(conv_id => conv["bf"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:r_tf] = Dict(conv_id => conv["rtf"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:g_tf] = Dict(conv_id => real(1/(conv["rtf"]+conv["xtf"]*im)) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:x_tf] = Dict(conv_id => conv["xtf"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:b_tf] = Dict(conv_id => imag(1/(conv["rtf"]+conv["xtf"]*im)) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:r_pr] = Dict(conv_id => conv["rc"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:g_pr] = Dict(conv_id => real(1/(conv["rc"]+conv["xc"]*im)) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:x_pr] = Dict(conv_id => conv["xc"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:b_pr] = Dict(conv_id => imag(1/(conv["rc"]+conv["xc"]*im)) for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:is_tf] = Dict(conv_id => conv["transformer"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:is_pr] = Dict(conv_id => conv["reactor"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:is_filter] = Dict(conv_id => conv["filter"] for (conv_id,conv) in data["convdc"])
+    #     m.ext[:parameters][:convdc][:tap_tf] = Dict(conv_id => conv["tm"] for (conv_id,conv) in data["convdc"])
+    #     # DC branches
+    #     m.ext[:parameters][:branchdc] = Dict()
+    #     m.ext[:parameters][:branchdc][:rate_a] = Dict(br_id => br["rateA"]/baseMVA for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:rate_b] = Dict(br_id => br["rateB"]/baseMVA for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:rate_c] = Dict(br_id => br["rateC"]/baseMVA for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:status] = Dict(br_id => br["status"] for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:r] = Dict(br_id => br["r"] for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:g] = Dict(br_id => 1/br["r"] for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:l] = Dict(br_id => br["l"] for (br_id,br) in data["branchdc"])
+    #     m.ext[:parameters][:branchdc][:dcpoles] = Dict(br_id => data["dcpol"] for (br_id,br) in data["branchdc"])
+    # end
     
     return m
 end
