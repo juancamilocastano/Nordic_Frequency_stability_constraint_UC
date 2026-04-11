@@ -16,17 +16,24 @@ function define_sets!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame)
     B = m.ext[:sets][:B] = [br_id for (br_id,branch) in data["branch"]]
     # Set of generators
     G = m.ext[:sets][:G] = [gen_id for (gen_id,gen) in data["gen"]]
-    G_contingencies = Dict("G" * gen_id => data["genextra"][gen_id]["col_9"] for gen_id in G)
-    G1=m.ext[:sets][:G1]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_9"]==1]
-    G2=m.ext[:sets][:G2]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_9"]==2]
+    G_contingencies = Dict("G" * gen_id => data["genextra"][gen_id]["col_1"] for gen_id in G) # Create a dictionary for contingencies generators and their corresponding area (since there are not areas, just stores the node)
+    G_reservoir=m.ext[:sets][:G_reservoir]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==1]
+    G_pump=m.ext[:sets][:G_pump]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==2]
+    G_nuclear=m.ext[:sets][:G_nuclear]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==3]
+    G_gas=m.ext[:sets][:G_gas]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==4]
+    G_biomass=m.ext[:sets][:G_biomass]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==5]
+    G_oil=m.ext[:sets][:G_oil]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==6]
+
+    # G1=m.ext[:sets][:G1]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_9"]==1]
+    # G2=m.ext[:sets][:G2]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_9"]==2]
     # Set of loads
     L = m.ext[:sets][:L] = [load_id for (load_id,load) in data["load"]]
     E= m.ext[:sets][:E] = [electro_id for (electro_id,elec) in data["elec"]] # set of electrolyzers
     E1= m.ext[:sets][:E1] = [electro_id for (electro_id,elec) in data["elec"] if data["elec"][electro_id]["col_2"]==1] #Electrolyzers area 1
     E2= m.ext[:sets][:E2] = [electro_id for (electro_id,elec) in data["elec"] if data["elec"][electro_id]["col_2"]==2] #Electrolyzers area 2
     S= m.ext[:sets][:S] = [stor_id for (stor_id,stor) in data["bess"]] # set of storage units 
-    S1=m.ext[:sets][:S1]= [stor_id for (stor_id,stor) in data["bess"] if data["bess"][stor_id]["col_2"]==1]
-    S2=m.ext[:sets][:S2]= [stor_id for (stor_id,stor) in data["bess"] if data["bess"][stor_id]["col_2"]==2]
+    # S1=m.ext[:sets][:S1]= [stor_id for (stor_id,stor) in data["bess"] if data["bess"][stor_id]["col_2"]==1]
+    # S2=m.ext[:sets][:S2]= [stor_id for (stor_id,stor) in data["bess"] if data["bess"][stor_id]["col_2"]==2]
 
     # Set of AC topology from side (i->j) and to side (j->i)
     B_ac_fr = m.ext[:sets][:B_ac_fr] = [(br_id, string(br["f_bus"]), string(br["t_bus"])) for (br_id,br) in data["branch"]] 
@@ -147,8 +154,14 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     N2=m.ext[:sets][:N2]
     B = m.ext[:sets][:B]
     G = m.ext[:sets][:G]
-    G1 = m.ext[:sets][:G1]
-    G2 = m.ext[:sets][:G2]
+    G_reservoir=m.ext[:sets][:G_reservoir]
+    G_pump=m.ext[:sets][:G_pump]
+    G_gas=m.ext[:sets][:G_gas]
+    G_nuclear=m.ext[:sets][:G_nuclear]
+    G_biomass=m.ext[:sets][:G_biomass]
+    G_oil=m.ext[:sets][:G_oil]
+    # G1 = m.ext[:sets][:G1]
+    # G2 = m.ext[:sets][:G2]
     L = m.ext[:sets][:L]
     T=m.ext[:sets][:t]
     all_contingencies = m.ext[:sets][:all_contingencies]
@@ -163,11 +176,11 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     # BD_dc_fr = m.ext[:sets][:BD_dc_fr]
     # BD_dc_to = m.ext[:sets][:BD_dc_to]
     E= m.ext[:sets][:E]
-    E1= m.ext[:sets][:E1]
-    E2= m.ext[:sets][:E2]
+    # E1= m.ext[:sets][:E1]
+    # E2= m.ext[:sets][:E2]
     S= m.ext[:sets][:S]
-    S1= m.ext[:sets][:S1]
-    S2= m.ext[:sets][:S2]
+    # S1= m.ext[:sets][:S1]
+    # S2= m.ext[:sets][:S2]
 
     # Create parameter dictionary
     m.ext[:parameters] = Dict()
@@ -304,6 +317,11 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     MUT= m.ext[:parameters][:MUT] = Dict(g => data["genextra"][g]["col_6"] for g in G) # minimum up time in hours
     MDT= m.ext[:parameters][:MDT] = Dict(g => data["genextra"][g]["col_7"] for g in G) # minimum down time in hours
     G_reservecost=m.ext[:parameters][:G_reservecost] = Dict(g => data["genextra"][g]["col_8"] for g in G) # reserve cost generators
+    P_pump=m.ext[:parameters][:P_pump] = Dict(g => data["genextra"][g]["col_9"]/baseMVA for g in G) # Pump power in pu
+    G_storage=m.ext[:parameters][:G_storage] = Dict(g => data["genextra"][g]["col_11"]/baseMVA for g in G) # Storage pump
+    G_npumping=m.ext[:parameters][:G_npumping] = Dict(g => data["genextra"][g]["col_12"] for g in G) # pumping efficiency
+    G_ngenerating=m.ext[:parameters][:G_ngenerating] = Dict(g => data["genextra"][g]["col_13"] for g in G) # generating efficiency
+
     
 
     

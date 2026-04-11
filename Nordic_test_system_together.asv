@@ -804,7 +804,8 @@ mpc.genextra = [
 %% Electrolyzer data
 %  1-AC_bus   2-area   3-Pmax_MW   4-Pmin_MW   5-eta_ely_MWh_per_kg   6-LoadFactor   7-max_hydrog_flow_kg   8-Smax_kg    9-Smin_kg   10-S0_kg   11-ST_kg   12-DeployTime_s   13-ReserveCost_£_per_MW_h   14-eta_c   15-eta_d   16-StartupCost_£   17-CompressEnergy_MWh_per_kg   18-Hydrogen_market_price_Eur_per_kg
 mpc.elec = [
-    0   0   1000   100   0.058   0.8   17286   0   0   0   0   0.2   15.3   0.9   0.9   855.5   0.00167   4;
+    0   0   1000   100   0.058   0.8   17286   0   0   0   0   0.2   15.3   0   0   855.5   0.00167   4;
+     3           1        40         93.3        0.793      0.9       0.9        20              20               0.2                15.3;
 ];
 
 %% BESS data (custom)
