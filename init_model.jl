@@ -221,6 +221,7 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
 
     
     m.ext[:parameters][:demand]=demand
+    m.ext[:parameters][:d]=d
 
     nw = nrow(tsw)
     colsw = names(tsw)
@@ -238,6 +239,7 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
 
     
     m.ext[:parameters][:wind]=wind
+    m.ext[:parameters][:w]=w
 
 
     # Bus parameters
@@ -317,11 +319,13 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     MUT= m.ext[:parameters][:MUT] = Dict(g => data["genextra"][g]["col_6"] for g in G) # minimum up time in hours
     MDT= m.ext[:parameters][:MDT] = Dict(g => data["genextra"][g]["col_7"] for g in G) # minimum down time in hours
     G_reservecost=m.ext[:parameters][:G_reservecost] = Dict(g => data["genextra"][g]["col_8"] for g in G) # reserve cost generators
-    P_pump=m.ext[:parameters][:P_pump] = Dict(g => data["genextra"][g]["col_9"]/baseMVA for g in G) # Pump power in pu
+    P_pump=m.ext[:parameters][:P_pump] = Dict(g => data["genextra"][g]["col_10"]/baseMVA for g in G) # Pump power in pu
     G_storage=m.ext[:parameters][:G_storage] = Dict(g => data["genextra"][g]["col_11"]/baseMVA for g in G) # Storage pump
     G_npumping=m.ext[:parameters][:G_npumping] = Dict(g => data["genextra"][g]["col_12"] for g in G) # pumping efficiency
     G_ngenerating=m.ext[:parameters][:G_ngenerating] = Dict(g => data["genextra"][g]["col_13"] for g in G) # generating efficiency
-
+    E_reservoirs_min=m.ext[:parameters][:E_reservoirs_min] = Dict(g => data["genextra"][g]["col_14"]/baseMVA for g in G) # Minimum resorvoir energy in pu
+    E_reservoirs_ini=m.ext[:parameters][:E_reservoirs_ini] = Dict(g => data["genextra"][g]["col_15"]/baseMVA for g in G) # Initial resorvoir energy in pu
+    E_reservoirs_end=m.ext[:parameters][:E_reservoirs_end] = Dict(g => data["genextra"][g]["col_16"]/baseMVA for g in G) # End resorvoir energy in pu
     
 
     

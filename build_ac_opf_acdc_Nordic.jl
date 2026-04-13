@@ -96,7 +96,9 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     ij_ji_ang_max = m.ext[:parameters][:ij_ji_ang_max]
     ij_ji_ang_min = m.ext[:parameters][:ij_ji_ang_min]
     demand = m.ext[:parameters][:demand]
+    d= m.ext[:parameters][:d]
     wind= m.ext[:parameters][:wind]
+    w= m.ext[:parameters][:w]
     upramp = m.ext[:parameters][:upramp]
     downramp = m.ext[:parameters][:downramp]
     MUT = m.ext[:parameters][:MUT]
@@ -108,6 +110,9 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     P_pump=m.ext[:parameters][:P_pump]
     G_npumping=m.ext[:parameters][:G_npumping]
     G_ngenerating=m.ext[:parameters][:G_ngenerating] 
+    E_reservoirs_min=m.ext[:parameters][:E_reservoirs_min]
+    E_reservoirs_ini=m.ext[:parameters][:E_reservoirs_ini]
+    E_reservoirs_end=m.ext[:parameters][:E_reservoirs_end]
 
     # DC network
     # DC bus
@@ -222,7 +227,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
     # Generator variables
     pg = m.ext[:variables][:pg] = @variable(m, [g=G,t=T], base_name = "pg") # active power generation
-    rg_lg1 = m.ext[:variables][:rg_lg1] = @variable(m, [g=G1,t=T],lower_bound=0, base_name = "rg_lg1") # frequency reserve generators loss of generation area 1
+    rg_lg1 = m.ext[:variables][:rg_lg1] = @variable(m, [g=G,t=T],lower_bound=0, base_name = "rg_lg1") # frequency reserve generators loss of generation area 1
     
     # # Branch variables
     # pb = m.ext[:variables][:pb] = @variable(m, [(b,i,j) in B_ac,t=T],lower_bound = -pmaxbranch[b], upper_bound = pmaxbranch[b], base_name = "pb") # from side active power flow (i->j)
@@ -232,7 +237,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     zg = m.ext[:variables][:zg] = @variable(m, [g=TG,t=T],binary= true , base_name = "zg") # status variable generator
     betag = m.ext[:variables][:betag] = @variable(m, [g=TG,t=T], binary= true, base_name = "betag") #
     gammag = m.ext[:variables][:gammag] = @variable(m, [g=TG,t=T], binary= true, base_name = "gammag") #
-    δg= m.ext[:variables][:δg] = @variable(m, [g=TG,t=T], binary=true, base_name="δg") #Binary variable event generator
+    δg= m.ext[:variables][:δg] = @variable(m, [g=G,t=T], binary=true, base_name="δg") #Binary variable event generator
 
     #Reservoir storage variables
     e_reservoir = m.ext[:variables][:e_reservoir] = @variable(m, [g=G_reservoir,t=T], lower_bound=0, upper_bound=G_storage[g], base_name = "e_reservoir") # energy storage reservoir
@@ -240,8 +245,9 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     #Pump generators variables
     p_charge_pump = m.ext[:variables][:p_charge_pump] = @variable(m, [g=G_pump,t=T], base_name = "p_charge_pump")
     e_pump = m.ext[:variables][:e_pump] = @variable(m, [g=G_pump,t=T], lower_bound=0, upper_bound=G_storage[g], base_name = "e_pump") # energy storage pump
+    zsp = m.ext[:variables][:zsp] = @variable(m, [g=G_pump,t=T], binary=true, base_name="zsp") #standby indicator of the batteries
 
-    # DC components
+
     
 #     # Branches
 #     brdc_p = m.ext[:variables][:brdc_p] = @variable(m, [(d,e,f)=BD_dc, t=T], lower_bound=-brdc_rate_a[d], upper_bound=brdc_rate_a[d], base_name="brdc_p")
@@ -336,24 +342,10 @@ function build_ac_opf_acdc_Nordic!(m::Model)
                 sum(gen_cost[g][1]
                         for g in G)
                             +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
-                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lg2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(slackinercia2[t]+slackinercia1[t]+slackreserve1[t]+slackreserve2[t] for t in T)*baseMVA*0
-                            +sum(flow_hvdc_abs[(d,f,e),t] for (d,f,e) in BD_dc, t in T)*baseMVA*0
+                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
+                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
+                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA
+                            
 
         )
     elseif max_gen_ncost == 2
@@ -361,71 +353,30 @@ function build_ac_opf_acdc_Nordic!(m::Model)
             sum(gen_cost[g][1] * pg[g, t] + gen_cost[g][2] 
                     for g in G, t in T)
                         +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
-                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lg2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(slackinercia2[t]+slackinercia1[t]+slackreserve1[t]+slackreserve2[t] for t in T)*baseMVA*0
-                            +sum(flow_hvdc_abs[(d,f,e),t] for (d,f,e) in BD_dc, t in T)*baseMVA*0
+                            +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
+                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
+                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
+                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA
+                            
         )
     elseif max_gen_ncost == 3
         m.ext[:objective] = @NLobjective(m, Min,
                 sum(gen_cost[g][1]*pg[g,t]^2 + gen_cost[g][2]*pg[g,t] + gen_cost[g][3]
                         for g in G, t in T)
                             +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
-                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lg2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(slackinercia2[t]+slackinercia1[t]+slackreserve1[t]+slackreserve2[t] for t in T)*baseMVA*0
-                            +sum(flow_hvdc_abs[(d,f,e),t] for (d,f,e) in BD_dc, t in T)*baseMVA*0
+                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
+                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
+                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA                            
         )   
     elseif max_gen_ncost == 4
         m.ext[:objective] = @NLobjective(m, Min,
                 sum(gen_cost[g][1]*pg[g,t]^3 + gen_cost[g][2]*pg[g,t]^2 + gen_cost[g][3]*pg[g,t] + gen_cost[g][4]
                         for g in G, t in T)+sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
-                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lg2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc1[e,t] for e in E1, t in T)*baseMVA
-                            +sum(Ereservecost[e]*re_lc2[e,t] for e in E2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lg2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc1[s,t] for s in S1, t in T)*baseMVA
-                            +sum(Sreservecost[s]*rs_lc2[s,t] for s in S2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lg2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc1[cv,t] for cv in CV1, t in T)*baseMVA
-                            +sum(HVDC_reservecost[cv]*rhvdc_lc2[cv,t] for cv in CV2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc1[g,t] for g in G1, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lc2[g,t] for g in G2, t in T)*baseMVA
-                            +sum(slackinercia2[t]+slackinercia1[t]+slackreserve1[t]+slackreserve2[t] for t in T)*baseMVA*0
-                            +sum(flow_hvdc_abs[(d,f,e),t] for (d,f,e) in BD_dc, t in T)*baseMVA*0
+                             +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
+                            +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
+                            +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
+                            +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
+                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA
         )
     end
 
@@ -564,16 +515,14 @@ function build_ac_opf_acdc_Nordic!(m::Model)
         end
     end
 
-#Storage constraints
+#Storage constraints Batteries
 
     m.ext[:constraints][:upper_bound_storage_charging] = @constraint(m, [s = S, t = T],
     psc[s,t] <= Spmax[s] * (1 - zs[s,t])
     )#3.25
 
     
-    m.ext[:constraints][:upper_bound_pump_charging] = @constraint(m, [g = G_reservoir, t = T],
-    psc[s,t] <= Spmax[s] * (1 - zs[s,t])
-    )#3.25
+
 
     m.ext[:constraints][:upper_bound_storage_discharging] = @constraint(m, [s = S, t = T],
     psd[s,t] <= Spmax[s] * zs[s,t]
@@ -600,6 +549,25 @@ function build_ac_opf_acdc_Nordic!(m::Model)
             Sefficiencycarga[s] * psc[s, Tlabels[k]] -
             psd[s, Tlabels[k]] / Sefficiencydischarge[s]
     )#3.27
+
+#Storage constraints Pump
+
+    #-P_pump is included since the charging of the pump is provided as a negative power in the input data.
+    m.ext[:constraints][:upper_bound_pump_charging] = @constraint(m, [g = G_pump, t = T],
+    p_charge_pump[g,t] <= (-P_pump[g] )* (1 - zsp[g,t])
+    )
+
+    m.ext[:constraints][:upper_bound_pump_discharging] = @constraint(m, [g = G_pump, t = T],
+    pg[g,t] <= pmax[g] * zsp[g,t]
+    )
+
+    m.ext[:constraints][:initial_energy_value_pump] = @constraint(m, [g in G_pump],
+        e_pump[g, Tlabels[1]] == E_reservoirs_ini[g]
+    )
+
+
+
+
 
 
 
