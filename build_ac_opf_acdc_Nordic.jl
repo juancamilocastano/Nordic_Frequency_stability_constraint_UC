@@ -107,12 +107,14 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     G_dt=m.ext[:parameters][:G_dt]
     ic=m.ext[:parameters][:ic]
     G_storage=m.ext[:parameters][:G_storage]
+    MaxFreqDev=m.ext[:parameters][:MaxFreqDev]
     P_pump=m.ext[:parameters][:P_pump]
     G_npumping=m.ext[:parameters][:G_npumping]
     G_ngenerating=m.ext[:parameters][:G_ngenerating] 
     E_reservoirs_min=m.ext[:parameters][:E_reservoirs_min]
     E_reservoirs_ini=m.ext[:parameters][:E_reservoirs_ini]
     E_reservoirs_end=m.ext[:parameters][:E_reservoirs_end]
+
 
     # DC network
     # DC bus
@@ -234,20 +236,17 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
 
     # Status variable thermal generators
-    zg = m.ext[:variables][:zg] = @variable(m, [g=TG,t=T],binary= true , base_name = "zg") # status variable generator
+    zg = m.ext[:variables][:zg] = @variable(m, [g=G,t=T],binary= true , base_name = "zg") # status variable generator
     betag = m.ext[:variables][:betag] = @variable(m, [g=TG,t=T], binary= true, base_name = "betag") #
     gammag = m.ext[:variables][:gammag] = @variable(m, [g=TG,t=T], binary= true, base_name = "gammag") #
     δg= m.ext[:variables][:δg] = @variable(m, [g=G,t=T], binary=true, base_name="δg") #Binary variable event generator
 
     #Reservoir storage variables
     e_reservoir = m.ext[:variables][:e_reservoir] = @variable(m, [g=G_reservoir,t=T], lower_bound=0, upper_bound=G_storage[g], base_name = "e_reservoir") # energy storage reservoir
-
-    #Pump generators variables
+     #Pump generators variables
     p_charge_pump = m.ext[:variables][:p_charge_pump] = @variable(m, [g=G_pump,t=T], base_name = "p_charge_pump")
     e_pump = m.ext[:variables][:e_pump] = @variable(m, [g=G_pump,t=T], lower_bound=0, upper_bound=G_storage[g], base_name = "e_pump") # energy storage pump
-    zsp = m.ext[:variables][:zsp] = @variable(m, [g=G_pump,t=T], binary=true, base_name="zsp") #standby indicator of the batteries
-
-
+   
     
 #     # Branches
 #     brdc_p = m.ext[:variables][:brdc_p] = @variable(m, [(d,e,f)=BD_dc, t=T], lower_bound=-brdc_rate_a[d], upper_bound=brdc_rate_a[d], base_name="brdc_p")
@@ -426,12 +425,16 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     #)
 
     m.ext[:constraints][:max_gen_power_TG] = @constraint(m, [g=TG,t=T],
-        pg[g,t] <= pmax[g]*zg[g,t]
+        pg[g,t]+rg_lg1[g,t] <= pmax[g]*zg[g,t]
         )#3.11
 
     m.ext[:constraints][:min_gen_power_TG] = @constraint(m, [g=TG,t=T],
         pg[g,t]>= pmin[g]*zg[g,t]
         )#3.11
+
+    m.ext[:constraints][:max_frequency_reserve_constraint] = @constraint(m, [g=TG,t=T],
+        rg_lg1[g,t] <= MaxFreqDev[g]*zg[g,t]
+        )#3.18
 
 
 
@@ -521,9 +524,6 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     psc[s,t] <= Spmax[s] * (1 - zs[s,t])
     )#3.25
 
-    
-
-
     m.ext[:constraints][:upper_bound_storage_discharging] = @constraint(m, [s = S, t = T],
     psd[s,t] <= Spmax[s] * zs[s,t]
     )#3.26
@@ -552,19 +552,75 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
 #Storage constraints Pump
 
-    #-P_pump is included since the charging of the pump is provided as a negative power in the input data.
-    m.ext[:constraints][:upper_bound_pump_charging] = @constraint(m, [g = G_pump, t = T],
-    p_charge_pump[g,t] <= (-P_pump[g] )* (1 - zsp[g,t])
+    #Costraint reserve Pump
+    m.ext[:constraints][:reserve_pump] = @constraint(m, [g in G_pump, t in T],
+    rg_lg1[g,t] <= MaxFreqDev[g]*zg[g,t]
     )
 
     m.ext[:constraints][:upper_bound_pump_discharging] = @constraint(m, [g = G_pump, t = T],
-    pg[g,t] <= pmax[g] * zsp[g,t]
+    pg[g,t]+rg_lg1[g,t] <= pmax[g]*zg[g,t]
     )
+
+    m.ext[:constraints][:lower_bound_pump_discharging] = @constraint(m, [g = G_pump, t = T],
+    pmin[g]*zsp[g,t] <=  pg[g,t]+rg_lg1[g,t]
+    )
+
+    #-P_pump is included since the charging of the pump is provided as a negative power in the input data.
+    m.ext[:constraints][:upper_bound_pump_charging] = @constraint(m, [g = G_pump, t = T],
+    p_charge_pump[g,t] <= (-P_pump[g] )* (1 -zg[g,t])
+    )
+
+    #Minimun charging power assumed as 10% of the maximum charging power (this is an assumption that can be changed based on the characteristics of the pump)
+    m.ext[:constraints][:lower_bound_pump_charging] = @constraint(m, [g = G_pump, t = T],
+    p_charge_pump[g,t] >= 0.1*(-P_pump[g] )* (1 -zg[g,t])
+    )
+
 
     m.ext[:constraints][:initial_energy_value_pump] = @constraint(m, [g in G_pump],
         e_pump[g, Tlabels[1]] == E_reservoirs_ini[g]
     )
 
+    m.ext[:constraints][:end_energy_value_pump] = @constraint(m, [g in G_pump],
+        E_reservoirs_end[g] ==
+            e_pump[g, Tlabels[NT]] +
+            p_charge_pump[g, Tlabels[NT]]*G_npumping[g] -
+            pg[g, Tlabels[NT]]/G_ngenerating[g]
+    )
+    m.ext[:constraints][:energy_balance_pump] = @constraint(m, [g in G_pump, k in 1:NT-1],
+        e_pump[g, Tlabels[k+1]] ==
+            e_pump[g, Tlabels[k]] +
+            p_charge_pump[g, Tlabels[k]]*G_npumping[g] -
+            pg[g, Tlabels[k]]/G_ngenerating[g]
+    )
+
+
+#Reservoir constraints
+    m.ext[:constraints][:reservoir_operation_max] = @constraint(m, [g in G_reservoir, t in T],
+        pg[g,t]+rg_lg1[g,t] <= pmax[g]*zg[g,t]
+    )
+
+     m.ext[:constraints][:reservoir_operation_min] = @constraint(m, [g in G_reservoir, t in T],
+        pg[g,t]+rg_lg1[g,t] >= pmin[g]*zg[g,t]
+    )
+    m.ext[:constraints][:reserve_reservoir] = @constraint(m, [g in G_reservoir, t in T],
+    rg_lg1[g,t] <= MaxFreqDev[g]* zg[g,t]
+    )
+    m.ext[:constraints][:initial_energy_value_reservoir] = @constraint(m, [g in G_reservoir, t in T],
+        e_reservoir[g, Tlabels[1]] == E_reservoirs_ini[g]
+    )
+    
+    
+    m.ext[:constraints][:end_energy_value_reservoir] = @constraint(m, [g in G_reservoir, t in T],
+        E_reservoirs_end[g] ==
+            e_reservoir[g, Tlabels[NT]] -
+            pg[g, Tlabels[NT]]/G_ngenerating[g]
+    )
+
+    m.ext[:constraints][:end_energy_value_reservoir]=@constraint(m, [g in G_reservoir, k in 1:NT-1],
+        e_reservoir[g, Tlabels[k+1]] ==
+            e_reservoir[g, Tlabels[k]] -
+            pg[g, Tlabels[k]]/G_ngenerating[g]
+    )
 
 
 
@@ -707,72 +763,72 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     plg1[t]-pg[g,t] <= (1-δg[g,t])*bigMG[g]
     )
     
-    m.ext[:constraints][:big_m1_gen_2]= @constraint(m, [g=G2,t=T],
-    (δg[g,t]-1)*bigMG[g]<= plg2[t]-pg[g,t]
-    )
-    m.ext[:constraints][:big_m2_gen_2]= @constraint(m, [g=G2,t=T],
-    plg2[t]-pg[g,t] <= (1-δg[g,t])*bigMG[g]
-    )
+    # m.ext[:constraints][:big_m1_gen_2]= @constraint(m, [g=G2,t=T],
+    # (δg[g,t]-1)*bigMG[g]<= plg2[t]-pg[g,t]
+    # )
+    # m.ext[:constraints][:big_m2_gen_2]= @constraint(m, [g=G2,t=T],
+    # plg2[t]-pg[g,t] <= (1-δg[g,t])*bigMG[g]
+    # )
 
-    m.ext[:constraints][:big_m1_conv_1]= @constraint(m, [cv=CV1,t=T],
-    (δhvdc[cv,t]-1)*bigMC[cv]<= plc1[t]-conv_p_ac[cv,t]
-    )
+    # m.ext[:constraints][:big_m1_conv_1]= @constraint(m, [cv=CV1,t=T],
+    # (δhvdc[cv,t]-1)*bigMC[cv]<= plc1[t]-conv_p_ac[cv,t]
+    # )
 
-    m.ext[:constraints][:big_m2_conv_1]= @constraint(m, [cv=CV1,t=T],
-    plc1[t]-conv_p_ac[cv,t] <= (1-δhvdc[cv,t])*bigMC[cv]
-    )
+    # m.ext[:constraints][:big_m2_conv_1]= @constraint(m, [cv=CV1,t=T],
+    # plc1[t]-conv_p_ac[cv,t] <= (1-δhvdc[cv,t])*bigMC[cv]
+    # )
 
-    m.ext[:constraints][:big_m1_conv_2]= @constraint(m, [cv=CV2,t=T],
-    (δhvdc[cv,t]-1)*bigMC[cv]<= plc2[t]-conv_p_ac[cv,t]
-    )
+    # m.ext[:constraints][:big_m1_conv_2]= @constraint(m, [cv=CV2,t=T],
+    # (δhvdc[cv,t]-1)*bigMC[cv]<= plc2[t]-conv_p_ac[cv,t]
+    # )
 
-    m.ext[:constraints][:big_m2_conv_2]= @constraint(m, [cv=CV2,t=T],
-    plc2[t]-conv_p_ac[cv,t] <= (1-δhvdc[cv,t])*bigMC[cv]
-    )
+    # m.ext[:constraints][:big_m2_conv_2]= @constraint(m, [cv=CV2,t=T],
+    # plc2[t]-conv_p_ac[cv,t] <= (1-δhvdc[cv,t])*bigMC[cv]
+    # )
 
     # Inertia value per area after the event
     Inertia_nadir_frequency_1=Dict()
-    Inertia_nadir_frequency_2=Dict()
-    Inertia_nadir_frequency_converter_1=Dict()
-    Inertia_nadir_frequency_converter_2=Dict()
+    # Inertia_nadir_frequency_2=Dict()
+    # Inertia_nadir_frequency_converter_1=Dict()
+    # Inertia_nadir_frequency_converter_2=Dict()
     for t in T 
-        Inertia_nadir_frequency_1[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G1)
-        Inertia_nadir_frequency_2[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G2)
-        Inertia_nadir_frequency_converter_1[t]=sum(zg[g,t]*ic[g]*pmax[g] for g in G1)
-        Inertia_nadir_frequency_converter_2[t]=sum(zg[g,t]*ic[g]*pmax[g] for g in G2)
+        Inertia_nadir_frequency_1[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G)
+        # Inertia_nadir_frequency_2[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G2)
+        # Inertia_nadir_frequency_converter_1[t]=sum(zg[g,t]*ic[g]*pmax[g] for g in G1)
+        # Inertia_nadir_frequency_converter_2[t]=sum(zg[g,t]*ic[g]*pmax[g] for g in G2)
     end
     
 
   #bounding the FFR and FCR contributions of all generator andconverter assets
-  m.ext[:constraints][:fcr_bound_gen_lg1]= @constraint(m, [g in G1, t in T],
-     rg_lg1[g,t]<=(1-δg[g,t])*pmax[g]
+  m.ext[:constraints][:fcr_bound_gen_lg1]= @constraint(m, [g in G, t in T],
+     rg_lg1[g,t]<=(1-δg[g,t])*MaxFreqDev[g]
     )
-    m.ext[:constraints][:fcr_bound_gen_lc1]= @constraint(m, [g in G1, t in T],
-     rg_lc1[g,t]<=pmax[g]
-    )
+    # m.ext[:constraints][:fcr_bound_gen_lc1]= @constraint(m, [g in G1, t in T],
+    #  rg_lc1[g,t]<=pmax[g]
+    # )
     
-    m.ext[:constraints][:fcr_bound_gen_lg2]= @constraint(m, [g in G2, t in T],
-     rg_lg2[g,t]<=(1-δg[g,t])*pmax[g]
-    )
+    # m.ext[:constraints][:fcr_bound_gen_lg2]= @constraint(m, [g in G2, t in T],
+    #  rg_lg2[g,t]<=(1-δg[g,t])*pmax[g]
+    # )
 
-    m.ext[:constraints][:fcr_bound_gen_lc2]= @constraint(m, [g in G2, t in T],
-     rg_lc2[g,t]<=pmax[g]
-    )
+    # m.ext[:constraints][:fcr_bound_gen_lc2]= @constraint(m, [g in G2, t in T],
+    #  rg_lc2[g,t]<=pmax[g]
+    # )
 
-    m.ext[:constraints][:fcr_bound_conv_lg1]= @constraint(m, [cv in CV1, t in T],
-         rhvdc_lg1[cv,t]<=2*conv_p_ac_max[cv]
-     )
-     m.ext[:constraints][:fcr_bound_conv_lc1]= @constraint(m, [cv in CV1, t in T],
-         rhvdc_lc1[cv,t]<=(1-δhvdc[cv,t])*2*conv_p_ac_max[cv]
-     )
+    # m.ext[:constraints][:fcr_bound_conv_lg1]= @constraint(m, [cv in CV1, t in T],
+    #      rhvdc_lg1[cv,t]<=2*conv_p_ac_max[cv]
+    #  )
+    #  m.ext[:constraints][:fcr_bound_conv_lc1]= @constraint(m, [cv in CV1, t in T],
+    #      rhvdc_lc1[cv,t]<=(1-δhvdc[cv,t])*2*conv_p_ac_max[cv]
+    #  )
 
-    m.ext[:constraints][:fcr_bound_conv_lg2]= @constraint(m, [cv in CV2, t in T],
-        rhvdc_lg2[cv,t]<=2*conv_p_ac_max[cv]
-    )
+    # m.ext[:constraints][:fcr_bound_conv_lg2]= @constraint(m, [cv in CV2, t in T],
+    #     rhvdc_lg2[cv,t]<=2*conv_p_ac_max[cv]
+    # )
 
-    m.ext[:constraints][:fcr_bound_conv_lc2]= @constraint(m, [cv in CV2, t in T],
-        rhvdc_lc2[cv,t]<=(1-δhvdc[cv,t])*2*conv_p_ac_max[cv]
-    )
+    # m.ext[:constraints][:fcr_bound_conv_lc2]= @constraint(m, [cv in CV2, t in T],
+    #     rhvdc_lc2[cv,t]<=(1-δhvdc[cv,t])*2*conv_p_ac_max[cv]
+    # )
 
 
 
@@ -781,192 +837,191 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
 
     #HVDC headroom reserve constraints
-    m.ext[:constraints][:hvdc_headroom_reserve_upper_lg1]= @constraint(m, [cv in CV1, t in T],
-        conv_p_ac[cv,t]+rhvdc_lg1[cv,t] <= conv_p_ac_max[cv]
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_upper_lg1]= @constraint(m, [cv in CV1, t in T],
+    #     conv_p_ac[cv,t]+rhvdc_lg1[cv,t] <= conv_p_ac_max[cv]
+    # )
 
-    m.ext[:constraints][:hvdc_headroom_reserve_lower_lg1]= @constraint(m, [cv in CV1, t in T],
-        -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lg1[cv,t] 
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_lower_lg1]= @constraint(m, [cv in CV1, t in T],
+    #     -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lg1[cv,t] 
+    # )
 
-    m.ext[:constraints][:hvdc_headroom_reserve_upper_lc1]= @constraint(m, [cv in CV1, t in T],
-        conv_p_ac[cv,t]+rhvdc_lc1[cv,t] <= conv_p_ac_max[cv]
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_upper_lc1]= @constraint(m, [cv in CV1, t in T],
+    #     conv_p_ac[cv,t]+rhvdc_lc1[cv,t] <= conv_p_ac_max[cv]
+    # )
 
-    m.ext[:constraints][:hvdc_headroom_reserve_lower_lc1]= @constraint(m, [cv in CV1, t in T],
-        -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lc1[cv,t] 
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_lower_lc1]= @constraint(m, [cv in CV1, t in T],
+    #     -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lc1[cv,t] 
+    # )
 
-    m.ext[:constraints][:hvdc_headroom_reserve_upper_lg2]= @constraint(m, [cv in CV2, t in T],
-        conv_p_ac[cv,t]+rhvdc_lg2[cv,t] <= conv_p_ac_max[cv]
-    )
-    m.ext[:constraints][:hvdc_headroom_reserve_lower_lg2]= @constraint(m, [cv in CV2, t in T],
-        -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lg2[cv,t] 
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_upper_lg2]= @constraint(m, [cv in CV2, t in T],
+    #     conv_p_ac[cv,t]+rhvdc_lg2[cv,t] <= conv_p_ac_max[cv]
+    # )
+    # m.ext[:constraints][:hvdc_headroom_reserve_lower_lg2]= @constraint(m, [cv in CV2, t in T],
+    #     -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lg2[cv,t] 
+    # )
 
-    m.ext[:constraints][:hvdc_headroom_reserve_upper_lc2]= @constraint(m, [cv in CV2, t in T],
-        conv_p_ac[cv,t]+rhvdc_lc2[cv,t] <= conv_p_ac_max[cv]
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_upper_lc2]= @constraint(m, [cv in CV2, t in T],
+    #     conv_p_ac[cv,t]+rhvdc_lc2[cv,t] <= conv_p_ac_max[cv]
+    # )
 
-    m.ext[:constraints][:hvdc_headroom_reserve_lower_lc2]= @constraint(m, [cv in CV2, t in T],
-        -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lc2[cv,t] 
-    )
+    # m.ext[:constraints][:hvdc_headroom_reserve_lower_lc2]= @constraint(m, [cv in CV2, t in T],
+    #     -conv_p_ac_max[cv]<=conv_p_ac[cv,t]+rhvdc_lc2[cv,t] 
+    # )
 
         #Reserve storage bound constraints per areas and type of contigency
-        m.ext[:constraints][:reserve_storage_lg1]=@constraint(m, [s=S1, t=T],
+        m.ext[:constraints][:reserve_storage_lg1]=@constraint(m, [s=S, t=T],
             rs_lg1[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
         )
-        m.ext[:constraints][:reserve_storage_lc1]=@constraint(m, [s=S1, t=T],
-            rs_lc1[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
-        )
-        m.ext[:constraints][:reserve_storage_lg2]=@constraint(m, [s=S2, t=T],
-            rs_lg2[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
-        )
-        m.ext[:constraints][:reserve_storage_lc2]=@constraint(m, [s=S2, t=T],
-            rs_lc2[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
-        )
+        # m.ext[:constraints][:reserve_storage_lc1]=@constraint(m, [s=S1, t=T],
+        #     rs_lc1[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
+        # )
+        # m.ext[:constraints][:reserve_storage_lg2]=@constraint(m, [s=S2, t=T],
+        #     rs_lg2[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
+        # )
+        # m.ext[:constraints][:reserve_storage_lc2]=@constraint(m, [s=S2, t=T],
+        #     rs_lc2[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
+        # )
         #Reserve electrolyzer bound constraint per areas and type of contigency
-        m.ext[:constraints][:reserve_electrolyzer_lg1]=@constraint(m, [e=E1, t=T],
+        m.ext[:constraints][:reserve_electrolyzer_lg1]=@constraint(m, [e=E, t=T],
             re_lg1[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
         )
-        m.ext[:constraints][:reserve_electrolyzer_lc1]=@constraint(m, [e=E1, t=T],
-            re_lc1[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
-        )
-        m.ext[:constraints][:reserve_electrolyzer_lg2]=@constraint(m, [e=E2, t=T],
-            re_lg2[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
-        )
-        m.ext[:constraints][:reserve_electrolyzer_lc2]=@constraint(m, [e=E2, t=T],
-            re_lc2[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
-        )
+        # m.ext[:constraints][:reserve_electrolyzer_lc1]=@constraint(m, [e=E1, t=T],
+        #     re_lc1[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
+        # )
+        # m.ext[:constraints][:reserve_electrolyzer_lg2]=@constraint(m, [e=E2, t=T],
+        #     re_lg2[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
+        # )
+        # m.ext[:constraints][:reserve_electrolyzer_lc2]=@constraint(m, [e=E2, t=T],
+        #     re_lc2[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
+        # )
 
 
 
 
     #Rocof constraints generators and converters per areas
-    m.ext[:constraints][:rocof_constraint_plg_1]= @constraint(m, [t in T],
-        f1*plg1[t] <= rocof1*(2*Inertia_nadir_frequency_1[t]+slackinercia1[t])
-    )
+    # m.ext[:constraints][:rocof_constraint_plg_1]= @constraint(m, [t in T],
+    #     f1*plg1[t] <= rocof1*(2*Inertia_nadir_frequency_1[t]+slackinercia1[t])
+    # )
 
-    m.ext[:constraints][:rocof_constraint_plc_1]= @constraint(m, [t in T],
-        f1*plc1[t] <= rocof1*(2*Inertia_nadir_frequency_converter_1[t]+slackinercia1[t])
-    )
+    # m.ext[:constraints][:rocof_constraint_plc_1]= @constraint(m, [t in T],
+    #     f1*plc1[t] <= rocof1*(2*Inertia_nadir_frequency_converter_1[t]+slackinercia1[t])
+    # )
     
-    m.ext[:constraints][:rocof_constraint_plg_2]= @constraint(m, [t in T],
-        f2*plg2[t] <= rocof2*(2*Inertia_nadir_frequency_2[t]+slackinercia2[t])
-    )
+    # m.ext[:constraints][:rocof_constraint_plg_2]= @constraint(m, [t in T],
+    #     f2*plg2[t] <= rocof2*(2*Inertia_nadir_frequency_2[t]+slackinercia2[t])
+    # )
 
-    m.ext[:constraints][:rocof_constraint_plc_2]= @constraint(m, [t in T],
-        f2*plc2[t] <= rocof2*(2*Inertia_nadir_frequency_converter_2[t]+slackinercia2[t])
-    )
+    # m.ext[:constraints][:rocof_constraint_plc_2]= @constraint(m, [t in T],
+    #     f2*plc2[t] <= rocof2*(2*Inertia_nadir_frequency_converter_2[t]+slackinercia2[t])
+    # )
 
     #Power balance constraint
 
-        m.ext[:constraints][:power_balance_lg1]= @constraint(m, [t in T],
-        slackreserve1[t]+sum(rs_lg1[s,t] for s in S1)+sum(re_lg1[e,t] for e in E1)+sum(rg_lg1[g,t] for g in G1)+sum(rhvdc_lg1[cv,t] for cv in CV1)>=plg1[t]
-    )
-    m.ext[:constraints][:power_balance_lc1]= @constraint(m, [t in T],
-     slackreserve1[t]+sum(rs_lc1[s,t] for s in S1)+sum(re_lc1[e,t] for e in E1)+sum(rg_lc1[g,t] for g in G1)+sum(rhvdc_lc1[cv,t] for cv in CV1)>=plc1[t]
-    )
+    #     m.ext[:constraints][:power_balance_lg1]= @constraint(m, [t in T],
+    #     slackreserve1[t]+sum(rs_lg1[s,t] for s in S1)+sum(re_lg1[e,t] for e in E1)+sum(rg_lg1[g,t] for g in G1)+sum(rhvdc_lg1[cv,t] for cv in CV1)>=plg1[t]
+    # )
+    # m.ext[:constraints][:power_balance_lc1]= @constraint(m, [t in T],
+    #  slackreserve1[t]+sum(rs_lc1[s,t] for s in S1)+sum(re_lc1[e,t] for e in E1)+sum(rg_lc1[g,t] for g in G1)+sum(rhvdc_lc1[cv,t] for cv in CV1)>=plc1[t]
+    # )
 
-     m.ext[:constraints][:power_balance_lg2]= @constraint(m, [t in T],
-        slackreserve2[t]+sum(rs_lg2[s,t] for s in S2)+sum(re_lg2[e,t] for e in E2)+sum(rg_lg2[g,t] for g in G2)+sum(rhvdc_lg2[cv,t] for cv in CV2)>=plg2[t]
-    )
-     m.ext[:constraints][:power_balance_lc2]= @constraint(m, [t in T],
-        slackreserve2[t]+sum(rs_lc2[s,t] for s in S2)+sum(re_lc2[e,t] for e in E2)+sum(rg_lc2[g,t] for g in G2)+sum(rhvdc_lc2[cv,t] for cv in CV2)>=plc2[t]
-    )
+    #  m.ext[:constraints][:power_balance_lg2]= @constraint(m, [t in T],
+    #     slackreserve2[t]+sum(rs_lg2[s,t] for s in S2)+sum(re_lg2[e,t] for e in E2)+sum(rg_lg2[g,t] for g in G2)+sum(rhvdc_lg2[cv,t] for cv in CV2)>=plg2[t]
+    # )
+    #  m.ext[:constraints][:power_balance_lc2]= @constraint(m, [t in T],
+    #     slackreserve2[t]+sum(rs_lc2[s,t] for s in S2)+sum(re_lc2[e,t] for e in E2)+sum(rg_lc2[g,t] for g in G2)+sum(rhvdc_lc2[cv,t] for cv in CV2)>=plc2[t]
+    # )
 
    # Constraint frequency nadir generators and converters area 1
 
     m.ext[:constraints][:nadir_frequency_g_1_constraint_1]= @constraint(m, [t in T],
-    ypg1[t]==2*deltaf1*(Inertia_nadir_frequency_1[t]+slackinercia1[t])/f1-sum(re_lg1[e,t]*Edeployment[e] for e in E1)/2-sum(rs_lg1[s,t]*Sdeployment[s] for s in S1)/2-sum(rhvdc_lg1[cv,t]*HVDC_deployment[cv] for cv in CV1)/2-slackreserve1[t]*0.2/2  
-    )
+    ypg1[t]==2*deltaf*(Inertia_nadir_frequency_1[t])/f1-sum(re_lg1[e,t]*Edeployment[e] for e in E)/2-sum(rs_lg1[s,t]*Sdeployment[s] for s in S)/2)
 
     m.ext[:constraints][:nadir_frequency_g_1_constraint_2]= @constraint(m, [t in T],
-    zpg1[t]==sum(rg_lg1[g,t]/G_dt[g] for g in G1)   
+    zpg1[t]==sum(rg_lg1[g,t]/G_dt[g] for g in G)   
     )
 
 
     m.ext[:constraints][:nadir_frequency_g_1_constraint_3] = @constraint(m,[t in T],
-    [ypg1[t]; zpg1[t]; plg1[t]-sum(re_lg1[e,t] for e in E1)-sum(rs_lg1[s,t] for s in S1)-sum(rhvdc_lg1[cv,t] for cv in CV1)-slackreserve1[t]] in RotatedSecondOrderCone()
+    [ypg1[t]; zpg1[t]; plg1[t]-sum(re_lg1[e,t] for e in E)-sum(rs_lg1[s,t] for s in S)] in RotatedSecondOrderCone()
     )
 
-    m.ext[:constraints][:nadir_frequency_c_1_constraint_1]= @constraint(m, [t in T],
-    ypc1[t]==2*deltaf1*(Inertia_nadir_frequency_converter_1[t]+slackinercia1[t])/f1-sum(re_lc1[e,t]*Edeployment[e] for e in E1)/2-sum(rs_lc1[s,t]*Sdeployment[s] for s in S1)/2-sum(rhvdc_lc1[cv,t]*HVDC_deployment[cv] for cv in CV1)/2-slackreserve1[t]*0.2/2
-    )
+    # m.ext[:constraints][:nadir_frequency_c_1_constraint_1]= @constraint(m, [t in T],
+    # ypc1[t]==2*deltaf*(Inertia_nadir_frequency_converter_1[t]+slackinercia1[t])/f1-sum(re_lc1[e,t]*Edeployment[e] for e in E1)/2-sum(rs_lc1[s,t]*Sdeployment[s] for s in S1)/2-sum(rhvdc_lc1[cv,t]*HVDC_deployment[cv] for cv in CV1)/2-slackreserve1[t]*0.2/2
+    # )
 
-    m.ext[:constraints][:nadir_frequency_c_1_constraint_2]= @constraint(m, [t in T],
-    zpc1[t]==sum(rg_lc1[g,t]/G_dt[g] for g in G1)
-    )
+    # m.ext[:constraints][:nadir_frequency_c_1_constraint_2]= @constraint(m, [t in T],
+    # zpc1[t]==sum(rg_lc1[g,t]/G_dt[g] for g in G1)
+    # )
 
-    m.ext[:constraints][:nadir_frequency_c_1_constraint_3] = @constraint(m,[t in T],
-    [ypc1[t]; zpc1[t]; plc1[t]-sum(re_lc1[e,t] for e in E1)-sum(rs_lc1[s,t] for s in S1)-sum(rhvdc_lc1[cv,t] for cv in CV1)-slackreserve1[t]] in RotatedSecondOrderCone()
-    )
+    # m.ext[:constraints][:nadir_frequency_c_1_constraint_3] = @constraint(m,[t in T],
+    # [ypc1[t]; zpc1[t]; plc1[t]-sum(re_lc1[e,t] for e in E1)-sum(rs_lc1[s,t] for s in S1)-sum(rhvdc_lc1[cv,t] for cv in CV1)-slackreserve1[t]] in RotatedSecondOrderCone()
+    # )
 
-    #Constraint frequency nadir generators and converters area 2
+    # #Constraint frequency nadir generators and converters area 2
 
-    m.ext[:constraints][:nadir_frequency_g_2_constraint_1]= @constraint(m, [t in T],
-    ypg2[t]==2*deltaf2*(Inertia_nadir_frequency_2[t]+slackinercia2[t])/f2-sum(re_lg2[e,t]*Edeployment[e] for e in E2)/2-sum(rs_lg2[s,t]*Sdeployment[s] for s in S2)/2-sum(rhvdc_lg2[cv,t]*HVDC_deployment[cv] for cv in CV2)/2-slackreserve2[t]*0.2/2  
-    )
+    # m.ext[:constraints][:nadir_frequency_g_2_constraint_1]= @constraint(m, [t in T],
+    # ypg2[t]==2*deltaf2*(Inertia_nadir_frequency_2[t]+slackinercia2[t])/f2-sum(re_lg2[e,t]*Edeployment[e] for e in E2)/2-sum(rs_lg2[s,t]*Sdeployment[s] for s in S2)/2-sum(rhvdc_lg2[cv,t]*HVDC_deployment[cv] for cv in CV2)/2-slackreserve2[t]*0.2/2  
+    # )
 
-    m.ext[:constraints][:nadir_frequency_g_2_constraint_2]= @constraint(m, [t in T],
-    zpg2[t]==sum(rg_lg2[g,t]/G_dt[g] for g in G2)   
-    )
+    # m.ext[:constraints][:nadir_frequency_g_2_constraint_2]= @constraint(m, [t in T],
+    # zpg2[t]==sum(rg_lg2[g,t]/G_dt[g] for g in G2)   
+    # )
 
-    m.ext[:constraints][:nadir_frequency_g_2_constraint_3] = @constraint(m,[t in T],
-    [ypg2[t]; zpg2[t]; plg2[t]-sum(re_lg2[e,t] for e in E2)-sum(rs_lg2[s,t] for s in S2)-sum(rhvdc_lg2[cv,t] for cv in CV2)-slackreserve2[t]] in RotatedSecondOrderCone()
-    )
+    # m.ext[:constraints][:nadir_frequency_g_2_constraint_3] = @constraint(m,[t in T],
+    # [ypg2[t]; zpg2[t]; plg2[t]-sum(re_lg2[e,t] for e in E2)-sum(rs_lg2[s,t] for s in S2)-sum(rhvdc_lg2[cv,t] for cv in CV2)-slackreserve2[t]] in RotatedSecondOrderCone()
+    # )
 
-    m.ext[:constraints][:nadir_frequency_c_2_constraint_1]= @constraint(m, [t in T],
-    ypc2[t]==2*deltaf2*(Inertia_nadir_frequency_converter_2[t]+slackinercia2[t])/f2-sum(re_lc2[e,t]*Edeployment[e] for e in E2)/2-sum(rs_lc2[s,t]*Sdeployment[s] for s in S2)/2-sum(rhvdc_lc2[cv,t]*HVDC_deployment[cv] for cv in CV2)/2-slackreserve2[t]*0.2/2
-    )
+    # m.ext[:constraints][:nadir_frequency_c_2_constraint_1]= @constraint(m, [t in T],
+    # ypc2[t]==2*deltaf2*(Inertia_nadir_frequency_converter_2[t]+slackinercia2[t])/f2-sum(re_lc2[e,t]*Edeployment[e] for e in E2)/2-sum(rs_lc2[s,t]*Sdeployment[s] for s in S2)/2-sum(rhvdc_lc2[cv,t]*HVDC_deployment[cv] for cv in CV2)/2-slackreserve2[t]*0.2/2
+    # )
 
-    m.ext[:constraints][:nadir_frequency_c_2_constraint_2]= @constraint(m, [t in T],
-    zpc2[t]==sum(rg_lc2[g,t]/G_dt[g] for g in G2)
-    )
+    # m.ext[:constraints][:nadir_frequency_c_2_constraint_2]= @constraint(m, [t in T],
+    # zpc2[t]==sum(rg_lc2[g,t]/G_dt[g] for g in G2)
+    # )
 
-    m.ext[:constraints][:nadir_frequency_c_2_constraint_3] = @constraint(m,[t in T],
-    [ypc2[t]; zpc2[t]; plc2[t]-sum(re_lc2[e,t] for e in E2)-sum(rs_lc2[s,t] for s in S2)-sum(rhvdc_lc2[cv,t] for cv in CV2)-slackreserve2[t]] in RotatedSecondOrderCone()
-    )
+    # m.ext[:constraints][:nadir_frequency_c_2_constraint_3] = @constraint(m,[t in T],
+    # [ypc2[t]; zpc2[t]; plc2[t]-sum(re_lc2[e,t] for e in E2)-sum(rs_lc2[s,t] for s in S2)-sum(rhvdc_lc2[cv,t] for cv in CV2)-slackreserve2[t]] in RotatedSecondOrderCone()
+    # )
    
 
     #Constraint time occurrence nadir
-    m.ext[:constraints][:time_nadir_occurrence_g1_1]= @constraint(m, [t in T],
-    plg1[t]<= 0.0000001+slackreserve1[t]+sum(re_lg1[e,t] for e in E1)+sum(rs_lg1[s,t] for s in S1)+sum(rhvdc_lg1[cv,t] for cv in CV1)+sum(rg_lg1[g,t] for g in G1)
-    )
-    m.ext[:constraints][:time_nadir_occurrence_g1_2]= @constraint(m, [t in T],
-    plg1[t]>=0.0000001+slackreserve1[t]+sum(re_lg1[e,t] for e in E1)+sum(rs_lg1[s,t] for s in S1)+sum(rhvdc_lg1[cv,t] for cv in CV1)+sum(rg_lg1[g,t] for g in G1)*Edeployment["1"]/G_dt["1"]
-    )
+    # m.ext[:constraints][:time_nadir_occurrence_g1_1]= @constraint(m, [t in T],
+    # plg1[t]<= 0.0000001+sum(re_lg1[e,t] for e in E)+sum(rs_lg1[s,t] for s in S)+sum(rg_lg1[g,t] for g in G)
+    # )
+    # m.ext[:constraints][:time_nadir_occurrence_g1_2]= @constraint(m, [t in T],
+    # plg1[t]>=0.0000001+sum(re_lg1[e,t] for e in E)+sum(rs_lg1[s,t] for s in S)+sum(rg_lg1[g,t] for g in G)*Edeployment["1"]/G_dt["1"]
+    # )
 
-    m.ext[:constraints][:time_nadir_occurrence_c1_1]= @constraint(m, [t in T],
-    plc1[t]<= 0.0000001+slackreserve1[t]+sum(re_lc1[e,t] for e in E1)+sum(rs_lc1[s,t] for s in S1)+sum(rhvdc_lc1[cv,t] for cv in CV1)+sum(rg_lc1[g,t] for g in G1)
-    )
-    m.ext[:constraints][:time_nadir_occurrence_c1_2]= @constraint(m, [t in T],
-    plc1[t]>=0.0000001+slackreserve1[t]+sum(re_lc1[e,t] for e in E1)+sum(rs_lc1[s,t] for s in S1)+sum(rhvdc_lc1[cv,t] for cv in CV1)+sum(rg_lc1[g,t] for g in G1)*Edeployment["1"]/G_dt["1"]
-    )
+    # m.ext[:constraints][:time_nadir_occurrence_c1_1]= @constraint(m, [t in T],
+    # plc1[t]<= 0.0000001+slackreserve1[t]+sum(re_lc1[e,t] for e in E1)+sum(rs_lc1[s,t] for s in S1)+sum(rhvdc_lc1[cv,t] for cv in CV1)+sum(rg_lc1[g,t] for g in G1)
+    # )
+    # m.ext[:constraints][:time_nadir_occurrence_c1_2]= @constraint(m, [t in T],
+    # plc1[t]>=0.0000001+slackreserve1[t]+sum(re_lc1[e,t] for e in E1)+sum(rs_lc1[s,t] for s in S1)+sum(rhvdc_lc1[cv,t] for cv in CV1)+sum(rg_lc1[g,t] for g in G1)*Edeployment["1"]/G_dt["1"]
+    # )
 
-    m.ext[:constraints][:time_nadir_occurrence_g2_1]= @constraint(m, [t in T],
-    plg2[t]<= 0.0000001+slackreserve2[t]+sum(re_lg2[e,t] for e in E2)+sum(rs_lg2[s,t] for s in S2)+sum(rhvdc_lg2[cv,t] for cv in CV2)+sum(rg_lg2[g,t] for g in G2)
-    )
-    m.ext[:constraints][:time_nadir_occurrence_g2_2]= @constraint(m, [t in T],
-    plg2[t]>=0.0000001+slackreserve2[t]+sum(re_lg2[e,t] for e in E2)+sum(rs_lg2[s,t] for s in S2)+sum(rhvdc_lg2[cv,t] for cv in CV2)+sum(rg_lg2[g,t] for g in G2)*Edeployment["1"]/G_dt["1"]
-    )
+    # m.ext[:constraints][:time_nadir_occurrence_g2_1]= @constraint(m, [t in T],
+    # plg2[t]<= 0.0000001+slackreserve2[t]+sum(re_lg2[e,t] for e in E2)+sum(rs_lg2[s,t] for s in S2)+sum(rhvdc_lg2[cv,t] for cv in CV2)+sum(rg_lg2[g,t] for g in G2)
+    # )
+    # m.ext[:constraints][:time_nadir_occurrence_g2_2]= @constraint(m, [t in T],
+    # plg2[t]>=0.0000001+slackreserve2[t]+sum(re_lg2[e,t] for e in E2)+sum(rs_lg2[s,t] for s in S2)+sum(rhvdc_lg2[cv,t] for cv in CV2)+sum(rg_lg2[g,t] for g in G2)*Edeployment["1"]/G_dt["1"]
+    # )
 
-    m.ext[:constraints][:time_nadir_occurrence_c2_1]= @constraint(m, [t in T],
-    plc2[t]<= 0.0000001+slackreserve2[t]+sum(re_lc2[e,t] for e in E2)+sum(rs_lc2[s,t] for s in S2)+sum(rhvdc_lc2[cv,t] for cv in CV2)+sum(rg_lc2[g,t] for g in G2)
-    )
-    m.ext[:constraints][:time_nadir_occurrence_c2_2]= @constraint(m, [t in T],
-    plc2[t]>=0.0000001+slackreserve2[t]+sum(re_lc2[e,t] for e in E2)+sum(rs_lc2[s,t] for s in S2)+sum(rhvdc_lc2[cv,t] for cv in CV2)+sum(rg_lc2[g,t] for g in G2)*Edeployment["1"]/G_dt["1"]
-    )
+    # m.ext[:constraints][:time_nadir_occurrence_c2_1]= @constraint(m, [t in T],
+    # plc2[t]<= 0.0000001+slackreserve2[t]+sum(re_lc2[e,t] for e in E2)+sum(rs_lc2[s,t] for s in S2)+sum(rhvdc_lc2[cv,t] for cv in CV2)+sum(rg_lc2[g,t] for g in G2)
+    # )
+    # m.ext[:constraints][:time_nadir_occurrence_c2_2]= @constraint(m, [t in T],
+    # plc2[t]>=0.0000001+slackreserve2[t]+sum(re_lc2[e,t] for e in E2)+sum(rs_lc2[s,t] for s in S2)+sum(rhvdc_lc2[cv,t] for cv in CV2)+sum(rg_lc2[g,t] for g in G2)*Edeployment["1"]/G_dt["1"]
+    # )
 
-    #Absolute value constraints
+    # #Absolute value constraints
   
-    m.ext[:constraints][:direccional_flow_dc_positive] = @constraint(m, [(d,f,e) = BD_dc,t=T],
-    flow_hvdc_abs[(d,f,e),t] >=  brdc_p[(d, f, e),t]
-    )
+    # m.ext[:constraints][:direccional_flow_dc_positive] = @constraint(m, [(d,f,e) = BD_dc,t=T],
+    # flow_hvdc_abs[(d,f,e),t] >=  brdc_p[(d, f, e),t]
+    # )
 
-     m.ext[:constraints][:direccional_flow_dc_negative] = @constraint(m, [(d,f,e) = BD_dc,t=T],
-    flow_hvdc_abs[(d,f,e),t] >=  -brdc_p[(d, f, e),t]
-    )
+    #  m.ext[:constraints][:direccional_flow_dc_negative] = @constraint(m, [(d,f,e) = BD_dc,t=T],
+    # flow_hvdc_abs[(d,f,e),t] >=  -brdc_p[(d, f, e),t]
+    # )
     
     #post contingency power flow constraint
 
