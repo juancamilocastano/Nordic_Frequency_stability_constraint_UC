@@ -1,12 +1,12 @@
 ## Step 0: Activate environment
 using Pkg
-Pkg.activate(@__DIR__)
-Pkg.instantiate()
-Pkg.update()
-Pkg.add("Ipopt")
-Pkg.add("PowerModels")
-Pkg.add("PowerModelsACDC")
-Pkg.add("JuMP")
+# Pkg.activate(@__DIR__)
+# Pkg.instantiate()
+# Pkg.update()
+# Pkg.add("Ipopt")
+# Pkg.add("PowerModels")
+# Pkg.add("PowerModelsACDC")
+# Pkg.add("JuMP")
 using PowerModels, PowerModelsACDC, Gurobi, JuMP, CSV, DataFrames, CairoMakie
 
 gurobi = optimizer_with_attributes(Gurobi.Optimizer)
@@ -44,6 +44,7 @@ process_parameters!(m, data,ts,tsw) # Pass the parameters to the JuMP model
 
 ##### Step 3: Build the model
 include(joinpath(path,"build_ac_opf_acdc_Nordic.jl")) # Define build_ac_opf_acdc! function
+include(joinpath(path,"plotfunction_frequency_Nordic.jl")) # Define plotfunction_frequency_Nordic! function
 build_ac_opf_acdc_Nordic!(m)
 
 ##### Step 4: Solve the model
@@ -64,10 +65,10 @@ optimize!(m)
 # plotfunction_frequency_several_res_var_without_loss_res!(m) # Plot the results
 #printparameters_frequency_several_res_var_without_loss_res!(m) # Print the results
 
-plotfunction_frequency_sev_var_res_provis!(m) # Plot the results
+plotfunction_frequency_Nordic!(m) # Plot the results
 
 
-printparameters_frequency_sev_var_res_provi!(m) # Plot the results
+#printparameters_frequency_Nordic!(m) # Plot the results
 
 
 

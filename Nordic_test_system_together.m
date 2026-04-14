@@ -537,7 +537,7 @@ mpc.elec = [
 %% BESS data (custom)
 %  1-AC_bus   2-area   3-Pmax_MW   4-Emax_MWh   5-DODmax   6-eta_c   7-eta_d   8-E_init_MWh   9-E_final_MWh   10-DeployTime_s   11-ReserveCost_$_per_MW_h
 mpc.bess = [
-    0           0        650         1311        0.8      0.9       0.9        65              65               0.2                15.3;
+    0           0        650         1311        0.8      0.9       0.9        393.3              393.3               0.2                15.3;
 ];
 
 %mpc.total_installed_capacity=sum(mpc.reservoir(:,9))+sum(mpc.pump(:,9))+sum(mpc.nuclear(:,9))+sum(mpc.gas(:,9))+sum(mpc.biomass(:,9))+sum(mpc.oil(:,9))+mpc.wind+mpc.solar;

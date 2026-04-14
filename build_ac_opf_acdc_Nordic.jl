@@ -144,7 +144,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 #va = m.ext[:variables][:va] = @variable(m, [i=N,t=T], lower_bound = vamin[i], upper_bound = vamax[i], base_name = "va") # voltage angle
 
     # Generator variables
-    pg = m.ext[:variables][:pg] = @variable(m, [g=G,t=T], base_name = "pg") # active power generation
+    pg = m.ext[:variables][:pg] = @variable(m, [g=G,t=T],lower_bound=0, base_name = "pg") # active power generation
     rg_lg1 = m.ext[:variables][:rg_lg1] = @variable(m, [g=G,t=T],lower_bound=0, base_name = "rg_lg1") # frequency reserve generators loss of generation area 1
     
 
@@ -177,7 +177,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     # Batteries variables
     psc = m.ext[:variables][:psc] = @variable(m, [s=S,t=T],lower_bound=0, base_name="psc") #Charging power of the batteries
     psd = m.ext[:variables][:psd] = @variable(m, [s=S,t=T],lower_bound=0, base_name="psd") #Discharging power of the batteries
-    es = m.ext[:variables][:es] = @variable(m, [s=S,t=T], lower_bound= Sstoragemax[s]*(1-Sdod[s]), upper_bound=Sstoragemax[s] , base_name="es") #Energy bounds of the batteries
+    es = m.ext[:variables][:es] = @variable(m, [s=S,t=T], lower_bound= Sstoragemax[s]*(1-(Sdod[s]-0.041)), upper_bound=Sstoragemax[s] , base_name="es") #Energy bounds of the batteries
     zs = m.ext[:variables][:zs] = @variable(m, [s=S,t=T], binary=true, base_name="zb") #standby indicator of the batteries
     rs_lg1=  m.ext[:variables][:rs_lg1] = @variable(m, [s=S,t=T], lower_bound=0, base_name="rs_lg1") #frequency reserve batteries loss of generation area 1
    
@@ -252,6 +252,15 @@ function build_ac_opf_acdc_Nordic!(m::Model)
         sum(pg[g,t] for g in TG )+sum(pg[g,t] for g in G_reservoir)+sum(pg[g,t] for g in G_pump)-sum(p_charge_pump[g,t] for g in G_pump)+w["Nordic"][t]-sum(rcu[t])-sum(d["$n"][t] for n in keys(d))+sum(psd[s,t] for s in S )-sum(psc[s,t] for s in S ) -sum(pe[e,t] for e in E ) -sum(pe_compressor[e,t] for e in E )== 0 #3.7
         )
 
+        #     m.ext[:constraints][:power_balance] = @constraint(m, [t=T],
+        # sum(pg[g,t] for g in TG )+sum(pg[g,t] for g in G_reservoir)+sum(pg[g,t] for g in G_pump)-sum(p_charge_pump[g,t] for g in G_pump)+w["Nordic"][t]-sum(rcu[t])-sum(d["$n"][t] for n in keys(d))+sum(psd[s,t] for s in S )-sum(psc[s,t] for s in S ) -sum(pe[e,t] for e in E ) -sum(pe_compressor[e,t] for e in E )== 0 #3.7
+        # )
+
+
+    m.ext[:constraints][:renewable_curtailment] = @constraint(m, [t=T],
+        rcu[t] <= w["Nordic"][t]
+    )
+
 
     m.ext[:constraints][:max_gen_power_TG] = @constraint(m, [g=TG,t=T],
         pg[g,t]+rg_lg1[g,t] <= pmax[g]*zg[g,t]
@@ -266,97 +275,97 @@ function build_ac_opf_acdc_Nordic!(m::Model)
         )#3.18
 
 
-       
+    Tlabels = collect(T)         # ensure indexable by position
+    NT = length(Tlabels)      
 
     #Unit commitment constraints
 
-#     Tlabels = collect(T)         # ensure indexable by position
-#     NT = length(Tlabels)
-#     #Ramp-up limit for generators
-#         m.ext[:constraints][:up_and_down_2_a] = @constraint(m, [g in TG, k in 2:NT],
-#         pg[g, Tlabels[k]] - pg[g, Tlabels[k-1]] <= upramp[g]+(pmin[g]- upramp[g])*betag[g, Tlabels[k]]
-#     )#3.19
+
+    #Ramp-up limit for generators
+        m.ext[:constraints][:up_and_down_2_a] = @constraint(m, [g in TG, k in 2:NT],
+        pg[g, Tlabels[k]] - pg[g, Tlabels[k-1]] <= upramp[g]+(pmin[g]- upramp[g])*betag[g, Tlabels[k]]
+    )#3.19
 
  
-#     #Ramp-down limit for generators
-#           m.ext[:constraints][:up_and_down_2_b] = @constraint(m, [g in TG, k in 2:NT],
-#         pg[g, Tlabels[k-1]] - pg[g, Tlabels[k]] <= downramp[g]+pmin[g]*gammag[g, Tlabels[k]]
-#     )#3.20
+    #Ramp-down limit for generators
+          m.ext[:constraints][:up_and_down_2_b] = @constraint(m, [g in TG, k in 2:NT],
+        pg[g, Tlabels[k-1]] - pg[g, Tlabels[k]] <= downramp[g]+pmin[g]*gammag[g, Tlabels[k]]
+    )#3.20
 
  
-#   #Initial status generators (unit commitment)
-#         m.ext[:constraints][:up_and_down_3] = @constraint(m, [g in TG],
-#         1 - zg[g, Tlabels[1]] + betag[g, Tlabels[1]] - gammag[g, Tlabels[1]] == 0
-#     )
+  #Initial status generators (unit commitment)
+        m.ext[:constraints][:up_and_down_3] = @constraint(m, [g in TG],
+        1 - zg[g, Tlabels[1]] + betag[g, Tlabels[1]] - gammag[g, Tlabels[1]] == 0
+    )
 
-#     #Status generators (unit commitment)
-#         m.ext[:constraints][:up_and_down_4] = @constraint(m, [g in TG, k in 2:NT],
-#         zg[g, Tlabels[k-1]] - zg[g, Tlabels[k]] + betag[g, Tlabels[k]] - gammag[g, Tlabels[k]] == 0
-#     )#3.23
+    #Status generators (unit commitment)
+        m.ext[:constraints][:up_and_down_4] = @constraint(m, [g in TG, k in 2:NT],
+        zg[g, Tlabels[k-1]] - zg[g, Tlabels[k]] + betag[g, Tlabels[k]] - gammag[g, Tlabels[k]] == 0
+    )#3.23
 
-#     #Startup and shutdown exclusivity
-#         m.ext[:constraints][:up_and_down_4_1] = @constraint(m, [g=TG, t=T],
-#         betag[g,t] + gammag[g,t] <= 1
-#     )
+    #Startup and shutdown exclusivity
+        m.ext[:constraints][:up_and_down_4_1] = @constraint(m, [g=TG, t=T],
+        betag[g,t] + gammag[g,t] <= 1
+    )
 
-#     #Minimum up time constraint
-#         m.ext[:constraints][:up_and_down_6] = Dict()
-#         for g in TG
-#             if MUT[g] > 0  # Only proceed if MUT[g] is positive
-#                 for k in MUT[g]:NT
-#                     m.ext[:constraints][:up_and_down_6][g, Tlabels[k]] = @constraint(m,
-#                     zg[g, Tlabels[k]] >= sum(betag[g, Tlabels[k-τ]] for τ in 0:MUT[g]-1)#3.22
-#                     )
-#                 end
-#             end
-#         end
+    #Minimum up time constraint
+        m.ext[:constraints][:up_and_down_6] = Dict()
+        for g in TG
+            if MUT[g] > 0  # Only proceed if MUT[g] is positive
+                for k in MUT[g]:NT
+                    m.ext[:constraints][:up_and_down_6][g, Tlabels[k]] = @constraint(m,
+                    zg[g, Tlabels[k]] >= sum(betag[g, Tlabels[k-τ]] for τ in 0:MUT[g]-1)#3.22
+                    )
+                end
+            end
+        end
         
 
 
 
-#     #Minimum down time constraint
-#     m.ext[:constraints][:up_and_down_7] = Dict()
-#     for g in TG
-#         if MDT[g] > 0  # Only proceed if MDT[g] is positive
-#             for k in MDT[g]:NT
-#                 m.ext[:constraints][:up_and_down_7][g, Tlabels[k]] = @constraint(m,
-#                 1 - zg[g, Tlabels[k]] >= sum(gammag[g, Tlabels[k-τ]] for τ in 0:MDT[g]-1)#3.21
-#                 )
-#             end
-#         end
-#     end
+    #Minimum down time constraint
+    m.ext[:constraints][:up_and_down_7] = Dict()
+    for g in TG
+        if MDT[g] > 0  # Only proceed if MDT[g] is positive
+            for k in MDT[g]:NT
+                m.ext[:constraints][:up_and_down_7][g, Tlabels[k]] = @constraint(m,
+                1 - zg[g, Tlabels[k]] >= sum(gammag[g, Tlabels[k-τ]] for τ in 0:MDT[g]-1)#3.21
+                )
+            end
+        end
+    end
 
 # #Storage constraints Batteries
 
-#     m.ext[:constraints][:upper_bound_storage_charging] = @constraint(m, [s = S, t = T],
-#     psc[s,t] <= Spmax[s] * (1 - zs[s,t])
-#     )#3.25
+    m.ext[:constraints][:upper_bound_storage_charging] = @constraint(m, [s = S, t = T],
+    psc[s,t] <= Spmax[s] * (1 - zs[s,t])
+    )#3.25
 
-#     m.ext[:constraints][:upper_bound_storage_discharging] = @constraint(m, [s = S, t = T],
-#     psd[s,t] <= Spmax[s] * zs[s,t]
-#     )#3.26
-
-
-#         # Initial energy value of the batteries
-#         m.ext[:constraints][:initial_energy_value] = @constraint(m, [s in S],
-#             es[s, Tlabels[1]] == Senergyinitial[s]
-#         )#3.27
+    m.ext[:constraints][:upper_bound_storage_discharging] = @constraint(m, [s = S, t = T],
+    psd[s,t] <= Spmax[s] * zs[s,t]
+    )#3.26
 
 
-#         # End energy value of the batteries
+        # Initial energy value of the batteries
+        m.ext[:constraints][:initial_energy_value] = @constraint(m, [s in S],
+            es[s, Tlabels[1]] == Senergyinitial[s]
+        )#3.27
+
+
+        # End energy value of the batteries
         
-#         m.ext[:constraints][:end_energy_value] = @constraint(m, [s in S],
-#             Senergyend[s] - es[s, Tlabels[NT]] ==
-#                 Sefficiencycarga[s] * psc[s, Tlabels[NT]] -
-#                 psd[s, Tlabels[NT]] / Sefficiencydischarge[s]
-#         )#3.27
+        m.ext[:constraints][:end_energy_value] = @constraint(m, [s in S],
+            Senergyend[s] - es[s, Tlabels[NT]] ==
+                Sefficiencycarga[s] * psc[s, Tlabels[NT]] -
+                psd[s, Tlabels[NT]] / Sefficiencydischarge[s]
+        )#3.27
 
-#         # Charging–discharging energy balance of the batteries
-#         m.ext[:constraints][:energy_balance] = @constraint(m, [s in S, k in 1:NT-1],
-#         es[s, Tlabels[k+1]] - es[s, Tlabels[k]] ==
-#             Sefficiencycarga[s] * psc[s, Tlabels[k]] -
-#             psd[s, Tlabels[k]] / Sefficiencydischarge[s]
-#     )#3.27
+        # Charging–discharging energy balance of the batteries
+        m.ext[:constraints][:energy_balance] = @constraint(m, [s in S, k in 1:NT-1],
+        es[s, Tlabels[k+1]] - es[s, Tlabels[k]] ==
+            Sefficiencycarga[s] * psc[s, Tlabels[k]] -
+            psd[s, Tlabels[k]] / Sefficiencydischarge[s]
+    )#3.27
 
 #Storage constraints Pump
 
@@ -370,7 +379,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     )
 
     m.ext[:constraints][:lower_bound_pump_discharging] = @constraint(m, [g = G_pump, t = T],
-    pmin[g]*zsp[g,t] <=  pg[g,t]+rg_lg1[g,t]
+    pmin[g]*zg[g,t] <=  pg[g,t]+rg_lg1[g,t]
     )
 
     #-P_pump is included since the charging of the pump is provided as a negative power in the input data.
@@ -499,65 +508,78 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
     
 #     #Events constraints (loss of generators)
-#     m.ext[:constraints][:gen_constraint_1]= @constraint(m, [g=G,t=T],
-#     pg[g,t]<=plg1[t]
-#     )
+    m.ext[:constraints][:gen_constraint_1]= @constraint(m, [g=G,t=T],
+    pg[g,t]<=plg1[t]
+    )
 
-#     m.ext[:constraints][:single_event_generator_1]= @constraint(m, [t=T],
-#     sum(δg[g,t] for g in G) ==1
-#     )
+    # m.ext[:constraints][:loss_renewable_1]= @constraint(m, [t=T],
+    #   w["Nordic"][t]-rcu[t] <=plg1[t]
+    # )
+    m.ext[:constraints][:single_event_generator_1]= @constraint(m, [t=T],
+    sum(δg[g,t] for g in G) ==1
+    )
  
 
-#     bigMG=Dict()
-#     for g in G
-#         bigMG[g]=pmax[g]
-#     end
+    bigMG=Dict()
+    for g in G
+        bigMG[g]=maximum(values(pmax))
+    end
 
    
-#     m.ext[:constraints][:big_m1_gen_1]= @constraint(m, [g=G,t=T],
-#     (δg[g,t]-1)*bigMG[g]<= plg1[t]-pg[g,t]
-#     )
-#     m.ext[:constraints][:big_m2_gen_1]= @constraint(m, [g=G,t=T],
-#     plg1[t]-pg[g,t] <= (1-δg[g,t])*bigMG[g]
-#     )
+    m.ext[:constraints][:big_m1_gen_1]= @constraint(m, [g=G,t=T],
+    (δg[g,t]-1)*bigMG[g]<= plg1[t]-pg[g,t]
+    )
+    m.ext[:constraints][:big_m2_gen_1]= @constraint(m, [g=G,t=T],
+    plg1[t]-pg[g,t] <= (1-δg[g,t])*bigMG[g]
+    )
     
 
-#     Inertia_nadir_frequency_1=Dict()
+    Inertia_nadir_frequency_1=Dict()
 
-#     for t in T 
-#         Inertia_nadir_frequency_1[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G)
+    for t in T 
+        Inertia_nadir_frequency_1[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G)
 
-#     end
+    end
     
 
-#   #bounding the FFR and FCR contributions of all generator andconverter assets
-#   m.ext[:constraints][:fcr_bound_gen_lg1]= @constraint(m, [g in G, t in T],
-#      rg_lg1[g,t]<=(1-δg[g,t])*MaxFreqDev[g]
-#     )
+  #bounding the FFR and FCR contributions of all generator andconverter assets
+  m.ext[:constraints][:fcr_bound_gen_lg1]= @constraint(m, [g in G, t in T],
+     rg_lg1[g,t]<=(1-δg[g,t])*MaxFreqDev[g]
+    )
 
-#         #Reserve storage bound constraints per areas and type of contigency
-#         m.ext[:constraints][:reserve_storage_lg1]=@constraint(m, [s=S, t=T],
-#             rs_lg1[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
-#         )
-#         m.ext[:constraints][:reserve_electrolyzer_lg1]=@constraint(m, [e=E, t=T],
-#             re_lg1[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
-#         )
-
-
-#    # Constraint frequency nadir generators and converters area 1
-
-#     m.ext[:constraints][:nadir_frequency_g_1_constraint_1]= @constraint(m, [t in T],
-#     ypg1[t]==2*deltaf*(Inertia_nadir_frequency_1[t])/f1-sum(re_lg1[e,t]*Edeployment[e] for e in E)/2-sum(rs_lg1[s,t]*Sdeployment[s] for s in S)/2)
-
-#     m.ext[:constraints][:nadir_frequency_g_1_constraint_2]= @constraint(m, [t in T],
-#     zpg1[t]==sum(rg_lg1[g,t]/G_dt[g] for g in G)   
-#     )
+        #Reserve storage bound constraints per areas and type of contigency
+        m.ext[:constraints][:reserve_storage_lg1]=@constraint(m, [s=S, t=T],
+            rs_lg1[s,t] <=  Spmax[s]+psc[s,t]-psd[s,t]
+        )
+        m.ext[:constraints][:reserve_electrolyzer_lg1]=@constraint(m, [e=E, t=T],
+            re_lg1[e,t] <=  pe[e,t]-Epmin[e] * ze[e,t] 
+        )
 
 
-#     m.ext[:constraints][:nadir_frequency_g_1_constraint_3] = @constraint(m,[t in T],
-#     [ypg1[t]; zpg1[t]; plg1[t]-sum(re_lg1[e,t] for e in E)-sum(rs_lg1[s,t] for s in S)] in RotatedSecondOrderCone()
-#     )
+   # Constraint frequency nadir generators and converters area 1
 
-      
+    m.ext[:constraints][:nadir_frequency_g_1_constraint_1]= @constraint(m, [t in T],
+    ypg1[t]==2*deltaf*(Inertia_nadir_frequency_1[t])/f1-sum(re_lg1[e,t]*Edeployment[e] for e in E)/2-sum(rs_lg1[s,t]*Sdeployment[s] for s in S)/2)
+
+    m.ext[:constraints][:nadir_frequency_g_1_constraint_2]= @constraint(m, [t in T],
+    zpg1[t]==sum(rg_lg1[g,t]/G_dt[g] for g in G)   
+    )
+
+
+    m.ext[:constraints][:nadir_frequency_g_1_constraint_3] = @constraint(m,[t in T],
+    [ypg1[t]; zpg1[t]; plg1[t]-sum(re_lg1[e,t] for e in E)-sum(rs_lg1[s,t] for s in S)] in RotatedSecondOrderCone()
+    )
+
+        m.ext[:constraints][:time_nadir_occurrence_g1_1]= @constraint(m, [t in T],
+    plg1[t]<= 0.0000001+sum(re_lg1[e,t] for e in E)+sum(rs_lg1[s,t] for s in S)+sum(rg_lg1[g,t] for g in G)
+    )
+    m.ext[:constraints][:time_nadir_occurrence_g1_2]= @constraint(m, [t in T],
+    plg1[t]>=0.0000001+sum(re_lg1[e,t] for e in E)+sum(rs_lg1[s,t] for s in S)+sum(rg_lg1[g,t] for g in G)*Edeployment["1"]/G_dt["1"]
+    )
+
+    m.ext[:constraints][:time_nadir_power_balance]= @constraint(m, [t in T],
+    plg1[t]<=sum(re_lg1[e,t] for e in E)+sum(rs_lg1[s,t] for s in S)+sum(rg_lg1[g,t] for g in G)
+    )
+
     return m 
 end
