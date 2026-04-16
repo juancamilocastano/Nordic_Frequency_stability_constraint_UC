@@ -140,6 +140,9 @@ pg=JuMP.value.(m.ext[:variables][:pg])*baseMVA
 zg=JuMP.value.(m.ext[:variables][:zg])
 δg=JuMP.value.(m.ext[:variables][:δg])
 pgvec= [pg[g,t] for g in G, t in T]
+pgreservoir_vec= [pg[g,t] for g in G_reservoir, t in T]
+pgpump_vec=[pg[g,t] for g in G_pump, t in T]
+PT_vec= [pg[g,t] for g in TG, t in T]
 pev=JuMP.value.(m.ext[:variables][:pe])*baseMVA
 pevec= [pev[e,t] for e in E, t in T]
 hfe=JuMP.value.(m.ext[:variables][:hfe])*baseKG
@@ -372,24 +375,9 @@ ax18=fig18[1, 1] = Axis(fig18,
     ylabel = "Power (MW)"
 )
 lines!(ax18, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]+rcu_vec+vec(sum(P_charge_pump_vec, dims=1))- wind1vec, label = "Net Demand Area 1 ")
-# lines!(ax18, demandwithoutEB2+pevec[2,:]+pevec_compressor[2,:]+pscvec[2,:]-psdvec[2,:]- wind2vec-flows_hvdc24-flows_hvdc31, label = "Net Demand Area 2 ")
+#
 fig18[1, 2] = Legend(fig18, ax18, "Net Demand", framevisible = false)
 fig18
-
-
-
-sum(P_charge_pump_vec,dims=1)'
-
-fig19=Figure()
-ax19=fig19[1, 1] = Axis(fig19,
-    title = "Net demand Area 1 and 2 without HVDC flows",
-    xlabel = "Time (hours)",
-    ylabel = "Power (MW)"
-)
-lines!(ax19, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]-psdvec[1,:]- wind1vec, label = "Net Demand Area 1 ")
-# lines!(ax19, demandwithoutEB2+pevec[2,:]+pevec_compressor[2,:]+pscvec[2,:]-psdvec[2,:]- wind2vec, label = "Net Demand Area 2 ")
-fig19[1, 2] = Legend(fig19, ax19, "Net Demand", framevisible = false)
-fig19
 
 
 
@@ -435,6 +423,22 @@ figpgvec
 # fig32
 
 
+figdemand_and_generation = Figure()
+axdemand_and_generation = figdemand_and_generation[1, 1] = Axis(figdemand_and_generation,
+     title  = "Demand and Generation",
+     xlabel = "Time (hours)",
+     ylabel = "Power (MW)"
+)
+lines!(axdemand_and_generation, vec(sum(pgvec, dims=1))+psdvec[1,:], label = "Synchronous Generation")
+lines!(axdemand_and_generation, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]+vec(sum(P_charge_pump_vec, dims=1)), label = "Total demand")
+lines!(axdemand_and_generation, wind1vec-rcu_vec, label = "Wind generation")
+lines!(axdemand_and_generation,vec(sum(pgreservoir_vec, dims=1)), label = "Hydro reservoir generation")
+lines!(axdemand_and_generation,vec(sum(pgpump_vec, dims=1)), label = "Hydro pump generation")
+lines!(axdemand_and_generation,vec(sum(PT_vec, dims=1)), label = "Thermal generation")
+lines!(axdemand_and_generation,vec(sum(pgvec, dims=1))+psdvec[1,:]+wind1vec-rcu_vec, label = "Total generation", linestyle = :dot)
+figdemand_and_generation[1, 2] = Legend(figdemand_and_generation, axdemand_and_generation, "Demand and Generation", framevisible = false)
+figdemand_and_generation
+
 
 
 for (name, fig) in [
@@ -447,10 +451,10 @@ for (name, fig) in [
     ("Demand_with_Electrolyzers_and_BESS.png", fig16),
     ("Wind_generation_Area_1_and_2.png", fig17),
     ("Net_demand_Area_1_and_2.png", fig18),
-    ("Net_demand_Area_1_and_2_without_HVDC_flows.png", fig19),
     ("Reserve_allocation_Area_1_pl_reserve.png", fig31),
     ("storage_pump.png", fig_storage_pump),
     ("Procured_inertia.png", fig_procured_inertia),
+    ("Demand_and_Generation.png", figdemand_and_generation),
 ]
     save(name, fig)
 end

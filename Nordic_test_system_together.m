@@ -4,8 +4,7 @@ mpc.baseKG=17286;
 mpc.frequency1=50;
 mpc.rocof=0.5;
 mpc.deltaf=1;
-mpc.wind=98160;
-mpc.solar=36731;
+
 
 %% bus data
 %	bus_i	type		Pd		Qd		  Gs	 Bs	   area		Vm	   Va		   baseKV	zone	  Vmax			 Vmin
