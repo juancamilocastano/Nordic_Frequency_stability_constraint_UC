@@ -211,6 +211,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
                             +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
                             +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
                             +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA
+                           
                             
 
         )
@@ -223,6 +224,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
                             +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
                             +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
                             +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA
+                         
                             
         )
     elseif max_gen_ncost == 3
@@ -232,7 +234,8 @@ function build_ac_opf_acdc_Nordic!(m::Model)
                             +sum(Hydrogencost[e]*baseKG*(-hfginyect[e,t]+hfgconsum[e,t]) for e in E, t in T)
                             +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
                             +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
-                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA                            
+                            +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA 
+                                    
         )   
     elseif max_gen_ncost == 4
         m.ext[:objective] = @NLobjective(m, Min,
@@ -243,6 +246,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
                             +sum(Ereservecost[e]*re_lg1[e,t] for e in E, t in T)*baseMVA
                             +sum(Sreservecost[s]*rs_lg1[s,t] for s in S, t in T)*baseMVA
                             +sum(G_reservecost[g]*rg_lg1[g,t] for g in G, t in T)*baseMVA
+                        
         )
     end
 
@@ -252,9 +256,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
         sum(pg[g,t] for g in TG )+sum(pg[g,t] for g in G_reservoir)+sum(pg[g,t] for g in G_pump)-sum(p_charge_pump[g,t] for g in G_pump)+w["Nordic"][t]-sum(rcu[t])-sum(d["$n"][t] for n in keys(d))+sum(psd[s,t] for s in S )-sum(psc[s,t] for s in S ) -sum(pe[e,t] for e in E ) -sum(pe_compressor[e,t] for e in E )== 0 #3.7
         )
 
-        #     m.ext[:constraints][:power_balance] = @constraint(m, [t=T],
-        # sum(pg[g,t] for g in TG )+sum(pg[g,t] for g in G_reservoir)+sum(pg[g,t] for g in G_pump)-sum(p_charge_pump[g,t] for g in G_pump)+w["Nordic"][t]-sum(rcu[t])-sum(d["$n"][t] for n in keys(d))+sum(psd[s,t] for s in S )-sum(psc[s,t] for s in S ) -sum(pe[e,t] for e in E ) -sum(pe_compressor[e,t] for e in E )== 0 #3.7
-        # )
+
 
 
     m.ext[:constraints][:renewable_curtailment] = @constraint(m, [t=T],
@@ -428,7 +430,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     
     
     m.ext[:constraints][:end_energy_value_reservoir] = @constraint(m, [g in G_reservoir, t in T],
-        E_reservoirs_end[g] ==
+        E_reservoirs_end[g] <=
             e_reservoir[g, Tlabels[NT]] -
             pg[g, Tlabels[NT]]/G_ngenerating[g]
     )
