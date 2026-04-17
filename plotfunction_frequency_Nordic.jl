@@ -26,6 +26,7 @@ function plotfunction_frequency_Nordic!(m::Model)
     G_gas = m.ext[:sets][:G_gas]
     G_biomass = m.ext[:sets][:G_biomass]
     G_oil = m.ext[:sets][:G_oil]
+    G_solar = m.ext[:sets][:G_solar]
     
     T= m.ext[:sets][:t]
 
@@ -77,8 +78,8 @@ function plotfunction_frequency_Nordic!(m::Model)
     ij_ji_ang_min = m.ext[:parameters][:ij_ji_ang_min]
     demand = m.ext[:parameters][:demand]
     d= m.ext[:parameters][:d]
-    wind= m.ext[:parameters][:wind]
-    w= m.ext[:parameters][:w]
+    wind_per_node= m.ext[:parameters][:wind_per_node]
+    total_wind= m.ext[:parameters][:total_wind]
     upramp = m.ext[:parameters][:upramp]
     downramp = m.ext[:parameters][:downramp]
     MUT = m.ext[:parameters][:MUT]
@@ -143,6 +144,7 @@ pgvec= [pg[g,t] for g in G, t in T]
 pgreservoir_vec= [pg[g,t] for g in G_reservoir, t in T]
 pgpump_vec=[pg[g,t] for g in G_pump, t in T]
 PT_vec= [pg[g,t] for g in TG, t in T]
+PS_vec= [pg[g,t] for g in G_solar, t in T]
 pev=JuMP.value.(m.ext[:variables][:pe])*baseMVA
 pevec= [pev[e,t] for e in E, t in T]
 hfe=JuMP.value.(m.ext[:variables][:hfe])*baseKG
@@ -195,7 +197,7 @@ re_lg1vec= [re_lg1[e,t] for e in E, t in T]
 rs_lg1vec= [rs_lg1[s,t] for s in S, t in T]
 
 
-wind1vec= [v for (k,v) in sort(collect(w["Nordic"]), by=x->parse(Int, x[1]))]*baseMVA
+wind1vec= [v for (k,v) in sort(collect(total_wind["Nordic"]), by=x->parse(Int, x[1]))]*baseMVA
 
 auxD = Dict{eltype(T), Float64}()
 for t in T
@@ -289,17 +291,6 @@ lines!(ax5, pg1[3, :], label = "Generator 3")
 fig5[1, 2] = Legend(fig5, ax5, "Generation Area 1", framevisible = false)
 fig5
 
-# fig6 = Figure()
-# ax6 = fig6[1, 1] = Axis(fig6,
-#     title = "Generation by unit Area 2",
-#     xlabel = "Time (hours)",
-#     ylabel = "Generation (MW)"
-# )   
-# lines!(ax6, pg2[1, :], label = "Generator 4")
-# lines!(ax6, pg2[2, :], label = "Generator 5")
-# lines!(ax6, pg2[3, :], label = "Generator 6")
-# fig6[1, 2] = Legend(fig6, ax6, "Generation Area 2", framevisible = false)
-# fig6
 
 fig7 = Figure()
 ax7 = fig7[1, 1] = Axis(fig7,
@@ -407,20 +398,16 @@ lines!(axpgvec, vec(sum(pgvec, dims=1)), label = "Generation")
 figpgvec[1, 2] = Legend(figpgvec, axpgvec, "Generation", framevisible = false)
 figpgvec
 
-# fig32 = Figure()
-# ax32 = fig32[1, 1] = Axis(fig32,
-#      title  = "Reserve allocation Area 2 pl reserve",
-#      xlabel = "Time (hours)",
-#      ylabel = "Reserve Power (MW)"
-# )
-# rg32    = vec(sum(rg_l_reserve_2vec,    dims=1))
-# re32    = vec(sum(re_l_reserve_2vec,    dims=1))
-# rs32    = vec(sum(rs_l_reserve_2vec,    dims=1))
-# lines!(ax32, rg32, label = "Reserve thermal generators Area 2")
-# lines!(ax32, re32, label = "Reserve electrolyzers Area 2")
-# lines!(ax32, rs32, label = "Reserve storage Area 2")
-# fig32[1, 2] = Legend(fig32, ax32, "Reserve Area 2", framevisible = false)
-# fig32
+figsolar=Figure()
+axsolar = figsolar[1, 1] = Axis(figsolar,
+     title  = "Solar generation",
+     xlabel = "Time (hours)",
+     ylabel = "Generation (MW)"
+)
+lines!(axsolar, vec(sum(PS_vec, dims=1)), label = "Solar Generation")
+figsolar[1, 2] = Legend(figsolar, axsolar, "Solar Generation", framevisible = false)
+figsolar
+
 
 
 figdemand_and_generation = Figure()
@@ -429,17 +416,24 @@ axdemand_and_generation = figdemand_and_generation[1, 1] = Axis(figdemand_and_ge
      xlabel = "Time (hours)",
      ylabel = "Power (MW)"
 )
-lines!(axdemand_and_generation, vec(sum(pgvec, dims=1))+psdvec[1,:], label = "Synchronous Generation")
+lines!(axdemand_and_generation,vec(sum(PT_vec, dims=1))+vec(sum(pgpump_vec, dims=1))+vec(sum(pgreservoir_vec, dims=1)) , label = "Synchronous Generation")
 lines!(axdemand_and_generation, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]+vec(sum(P_charge_pump_vec, dims=1)), label = "Total demand")
 lines!(axdemand_and_generation, wind1vec-rcu_vec, label = "Wind generation")
 lines!(axdemand_and_generation,vec(sum(pgreservoir_vec, dims=1)), label = "Hydro reservoir generation")
 lines!(axdemand_and_generation,vec(sum(pgpump_vec, dims=1)), label = "Hydro pump generation")
 lines!(axdemand_and_generation,vec(sum(PT_vec, dims=1)), label = "Thermal generation")
-lines!(axdemand_and_generation,vec(sum(pgvec, dims=1))+psdvec[1,:]+wind1vec-rcu_vec, label = "Total generation", linestyle = :dot)
+lines!(axdemand_and_generation,vec(sum(PS_vec, dims=1)), label = "Solar generation")
+lines!(axdemand_and_generation,psdvec[1,:]+vec(sum(PT_vec, dims=1))+vec(sum(pgpump_vec, dims=1))+vec(sum(pgreservoir_vec, dims=1))+vec(sum(PS_vec, dims=1))+wind1vec-rcu_vec, label = "Total generation", linestyle = :dot)
+#lines!(axdemand_and_generation,vec(sum(pgvec, dims=1))+psdvec[1,:]+wind1vec-rcu_vec, label = "Total generation", linestyle = :dot)
 figdemand_and_generation[1, 2] = Legend(figdemand_and_generation, axdemand_and_generation, "Demand and Generation", framevisible = false)
 figdemand_and_generation
 
 
+#Folder to save the figures
+folder = raw"C:\Users\jcastano\.julia\dev\Nordic_Frequency_stability_constraint_UC\Figures"
+
+#if the folder doesn't exist, create it
+isdir(folder) || mkpath(folder)
 
 for (name, fig) in [
     ("hydrogen_storage1.png", fig1),
@@ -456,7 +450,7 @@ for (name, fig) in [
     ("Procured_inertia.png", fig_procured_inertia),
     ("Demand_and_Generation.png", figdemand_and_generation),
 ]
-    save(name, fig)
+    save(joinpath(folder, name), fig)
 end
 
 end

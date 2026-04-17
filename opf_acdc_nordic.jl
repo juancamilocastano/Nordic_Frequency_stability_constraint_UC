@@ -32,6 +32,8 @@ data = PowerModels.parse_file(case_file)
 
 ts = CSV.read("Load_nordic_2030.csv", DataFrame)
 tsw= CSV.read("Nordic_wind.csv", DataFrame)
+#Imports capacity factors for solar generation in the Nordic system
+tss= CSV.read("Nordic_solar.csv", DataFrame)
 
 # Initialize the JuMP model (an empty JuMP model) with defined solver
 m = Model(gurobi)
@@ -39,8 +41,8 @@ m = Model(gurobi)
 
 ##### Step 2: create the JuMP model & pass data to model
 include(joinpath(path,"init_model.jl")) # Define functions define_sets! and process_parameters!
-define_sets!(m, data,ts,tsw) # Pass the sets to the JuMP model
-process_parameters!(m, data,ts,tsw) # Pass the parameters to the JuMP model
+define_sets!(m, data,ts,tsw,tss) # Pass the sets to the JuMP model
+process_parameters!(m, data,ts,tsw,tss) # Pass the parameters to the JuMP model
 
 ##### Step 3: Build the model
 include(joinpath(path,"build_ac_opf_acdc_Nordic.jl")) # Define build_ac_opf_acdc! function
@@ -72,14 +74,17 @@ plotfunction_frequency_Nordic!(m) # Plot the results
 
 
 
-filename = "1_objective.txt"
+# filename = "1_objective.txt"
 
-open(filename, "w") do file
+# open(filename, "w") do file
     
-    println(file, "Objective: ", objective_value(m))
-end
+#     println(file, "Objective: ", objective_value(m))
+# end
 
 
-solution_summary(m)
+# solution_summary(m)
 #println(objective_value(m)) # Print the objective value of the model
+
+
+
 
