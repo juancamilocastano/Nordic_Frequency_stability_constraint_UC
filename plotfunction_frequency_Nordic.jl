@@ -79,7 +79,6 @@ function plotfunction_frequency_Nordic!(m::Model)
     demand = m.ext[:parameters][:demand]
     d= m.ext[:parameters][:d]
     wind_per_node= m.ext[:parameters][:wind_per_node]
-    total_wind= m.ext[:parameters][:total_wind]
     upramp = m.ext[:parameters][:upramp]
     downramp = m.ext[:parameters][:downramp]
     MUT = m.ext[:parameters][:MUT]
@@ -140,11 +139,25 @@ baseMVA=m.ext[:parameters][:baseMVA]
 pg=JuMP.value.(m.ext[:variables][:pg])*baseMVA
 zg=JuMP.value.(m.ext[:variables][:zg])
 δg=JuMP.value.(m.ext[:variables][:δg])
+grouped = Dict(i => String[] for i in axes(δg, 1))
+
+for i in axes(δg, 1), j in axes(δg, 2)
+    if isapprox(δg[i, j], 1.0; atol=1e-6)
+        push!(grouped[i], j)
+    end
+end
+
+grouped = Dict(i => js for (i, js) in grouped if !isempty(js))
+
+zg_vec_thermal = [zg[g,t] for g in TG, t in T]
+zg_vec_hydro = [zg[g,t] for g in G_reservoir, t in T]
+zg_vec_pump = [zg[g,t] for g in G_pump, t in T]
 pgvec= [pg[g,t] for g in G, t in T]
 pgreservoir_vec= [pg[g,t] for g in G_reservoir, t in T]
 pgpump_vec=[pg[g,t] for g in G_pump, t in T]
 PT_vec= [pg[g,t] for g in TG, t in T]
 PS_vec= [pg[g,t] for g in G_solar, t in T]
+PW_vec= [pg[g,t] for g in G_wind, t in T]
 pev=JuMP.value.(m.ext[:variables][:pe])*baseMVA
 pevec= [pev[e,t] for e in E, t in T]
 hfe=JuMP.value.(m.ext[:variables][:hfe])*baseKG
@@ -197,7 +210,7 @@ re_lg1vec= [re_lg1[e,t] for e in E, t in T]
 rs_lg1vec= [rs_lg1[s,t] for s in S, t in T]
 
 
-wind1vec= [v for (k,v) in sort(collect(total_wind["Nordic"]), by=x->parse(Int, x[1]))]*baseMVA
+#wind1vec= [v for (k,v) in sort(collect(total_wind["Nordic"]), by=x->parse(Int, x[1]))]*baseMVA
 
 auxD = Dict{eltype(T), Float64}()
 for t in T
@@ -209,8 +222,6 @@ rg_l_reserve_1vec = rg_lg1.data
 re_l_reserve_1vec = re_lg1.data
 rs_l_reserve_1vec = rs_lg1.data
 
-rcu=JuMP.value.(m.ext[:variables][:rcu])*baseMVA
-rcu_vec= [rcu[t] for t in T]
 
 
 Procured_inertia=Dict{eltype(T), Float64}()
@@ -350,11 +361,11 @@ fig16
 
 fig17=Figure()
 ax17=fig17[1, 1] = Axis(fig17,
-    title = "Wind generation Area 1 and 2",
+    title = "Wind generation ",
     xlabel = "Time (hours)",
     ylabel = "Power (MW)"
 )
-lines!(ax17, wind1vec, label = "Wind Area 1 ")
+lines!(ax17, vec(sum(PW_vec, dims=1)), label = "Wind Area 1 ")
 # lines!(ax17,wind2vec, label = "Wind Area 2")
 fig17[1, 2] = Legend(fig17, ax17, "Wind Generation", framevisible = false)
 fig17
@@ -365,7 +376,7 @@ ax18=fig18[1, 1] = Axis(fig18,
     xlabel = "Time (hours)",
     ylabel = "Power (MW)"
 )
-lines!(ax18, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]+rcu_vec+vec(sum(P_charge_pump_vec, dims=1))- wind1vec, label = "Net Demand Area 1 ")
+lines!(ax18, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]+vec(sum(P_charge_pump_vec, dims=1))- vec(sum(PW_vec, dims=1)), label = "Net Demand Area 1 ")
 #
 fig18[1, 2] = Legend(fig18, ax18, "Net Demand", framevisible = false)
 fig18
@@ -408,7 +419,15 @@ lines!(axsolar, vec(sum(PS_vec, dims=1)), label = "Solar Generation")
 figsolar[1, 2] = Legend(figsolar, axsolar, "Solar Generation", framevisible = false)
 figsolar
 
-
+figwind=Figure()
+axwind = figwind[1, 1] = Axis(figwind,
+     title  = "Wind generation",
+     xlabel = "Time (hours)",
+     ylabel = "Generation (MW)"
+)
+lines!(axwind, vec(sum(PW_vec, dims=1)), label = "Wind Generation")
+figwind[1, 2] = Legend(figwind, axwind, "Wind Generation", framevisible = false)
+figwind
 
 figdemand_and_generation = Figure()
 axdemand_and_generation = figdemand_and_generation[1, 1] = Axis(figdemand_and_generation,
@@ -416,24 +435,66 @@ axdemand_and_generation = figdemand_and_generation[1, 1] = Axis(figdemand_and_ge
      xlabel = "Time (hours)",
      ylabel = "Power (MW)"
 )
+
 lines!(axdemand_and_generation,vec(sum(PT_vec, dims=1))+vec(sum(pgpump_vec, dims=1))+vec(sum(pgreservoir_vec, dims=1)) , label = "Synchronous Generation")
 lines!(axdemand_and_generation, demandwithoutEB1+pevec[1,:]+pevec_compressor[1,:]+pscvec[1,:]+vec(sum(P_charge_pump_vec, dims=1)), label = "Total demand")
-lines!(axdemand_and_generation, wind1vec-rcu_vec, label = "Wind generation")
 lines!(axdemand_and_generation,vec(sum(pgreservoir_vec, dims=1)), label = "Hydro reservoir generation")
 lines!(axdemand_and_generation,vec(sum(pgpump_vec, dims=1)), label = "Hydro pump generation")
 lines!(axdemand_and_generation,vec(sum(PT_vec, dims=1)), label = "Thermal generation")
 lines!(axdemand_and_generation,vec(sum(PS_vec, dims=1)), label = "Solar generation")
-lines!(axdemand_and_generation,psdvec[1,:]+vec(sum(PT_vec, dims=1))+vec(sum(pgpump_vec, dims=1))+vec(sum(pgreservoir_vec, dims=1))+vec(sum(PS_vec, dims=1))+wind1vec-rcu_vec, label = "Total generation", linestyle = :dot)
-#lines!(axdemand_and_generation,vec(sum(pgvec, dims=1))+psdvec[1,:]+wind1vec-rcu_vec, label = "Total generation", linestyle = :dot)
+lines!(axdemand_and_generation,vec(sum(PW_vec, dims=1)), label = "Wind generation")
+lines!(axdemand_and_generation,psdvec[1,:]+vec(sum(PT_vec, dims=1))+vec(sum(pgpump_vec, dims=1))+vec(sum(pgreservoir_vec, dims=1))+vec(sum(PS_vec, dims=1))+vec(sum(PW_vec, dims=1)), label = "Total generation", linestyle = :dot)
 figdemand_and_generation[1, 2] = Legend(figdemand_and_generation, axdemand_and_generation, "Demand and Generation", framevisible = false)
 figdemand_and_generation
 
 
+figmaximum_generation_per_technology = Figure()
+
+axmaximum_generation_per_technology = figmaximum_generation_per_technology[1, 1] = Axis(
+    figmaximum_generation_per_technology,
+    title  = "Maximum generation per technology",
+    xlabel = "Time (hours)",
+    ylabel = "Generation (MW)"
+)
+lines!(axmaximum_generation_per_technology,
+    vec(maximum(PT_vec, dims=1)),
+    label = "Thermal generation",
+    color = :red
+)
+lines!(axmaximum_generation_per_technology,
+    vec(maximum(PS_vec, dims=1)),
+    label = "Solar generation",
+    color = :goldenrod
+)
+lines!(axmaximum_generation_per_technology,
+    vec(maximum(PW_vec, dims=1)),
+    label = "Wind generation",
+    color = :green
+)
+lines!(axmaximum_generation_per_technology,
+    vec(maximum(pgpump_vec, dims=1)),
+    label = "Hydro pump generation",
+    linestyle = :dashdot,
+    color = :brown
+)
+lines!(axmaximum_generation_per_technology,
+    vec(maximum(pgreservoir_vec, dims=1)),
+    label = "Hydro reservoir generation",
+    linestyle = :dashdotdot,
+    color = :blue
+)
+figmaximum_generation_per_technology[1, 2] = Legend(
+    figmaximum_generation_per_technology,
+    axmaximum_generation_per_technology,
+    "Maximum Generation per Technology",
+    framevisible = false
+)
+figmaximum_generation_per_technology
+
+
+
 #Folder to save the figures
 folder = raw"C:\Users\jcastano\.julia\dev\Nordic_Frequency_stability_constraint_UC\Figures"
-
-#if the folder doesn't exist, create it
-isdir(folder) || mkpath(folder)
 
 for (name, fig) in [
     ("hydrogen_storage1.png", fig1),

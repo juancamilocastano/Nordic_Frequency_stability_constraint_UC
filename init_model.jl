@@ -24,6 +24,7 @@ function define_sets!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame, tss::
     G_biomass=m.ext[:sets][:G_biomass]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==5]
     G_oil=m.ext[:sets][:G_oil]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==6]
     G_solar=m.ext[:sets][:G_solar]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==7]
+    G_wind=m.ext[:sets][:G_wind]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_12"]==8]
 
     # G1=m.ext[:sets][:G1]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_9"]==1]
     # G2=m.ext[:sets][:G2]= [gen_id for (gen_id,gen) in data["genextra"] if data["genextra"][gen_id]["col_9"]==2]
@@ -161,6 +162,8 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     G_nuclear=m.ext[:sets][:G_nuclear]
     G_biomass=m.ext[:sets][:G_biomass]
     G_oil=m.ext[:sets][:G_oil]
+    G_solar=m.ext[:sets][:G_solar]
+    G_wind=m.ext[:sets][:G_wind]
     # G1 = m.ext[:sets][:G1]
     # G2 = m.ext[:sets][:G2]
     L = m.ext[:sets][:L]
@@ -228,8 +231,10 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     colsw = names(tsw)
 
     # Wind input
-    total_wind=Dict(col => Dict(string(i) => tsw[i, col]/baseMVA for i in 1:nw) for col in colsw)
+    #total_wind=Dict(col => Dict(string(i) => tsw[i, col]/baseMVA for i in 1:nw) for col in colsw)
+
     capacity_factor_solar=Dict(col => Dict(string(i) => tss[i, col] for i in 1:nw) for col in names(tss))
+    capacity_factor_wind=Dict(col => Dict(string(i) => tsw[i, col] for i in 1:nw) for col in colsw)
     wind_per_node = Dict(string(i) => Dict(string(j) => 0.0 for j in T) for i in 1:maxN)
 
  
@@ -242,8 +247,10 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
 
         
     m.ext[:parameters][:wind_per_node]=wind_per_node
-    m.ext[:parameters][:total_wind]=total_wind
+    #m.ext[:parameters][:total_wind]=total_wind
     m.ext[:parameters][:capacity_factor_solar]=capacity_factor_solar
+    m.ext[:parameters][:capacity_factor_wind]=capacity_factor_wind
+
 
     #solar input
     nsw = nrow(tss)

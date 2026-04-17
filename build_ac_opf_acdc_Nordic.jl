@@ -19,6 +19,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     G = m.ext[:sets][:G]
     G_ac = m.ext[:sets][:G_ac]
     G_solar = m.ext[:sets][:G_solar]
+    G_wind = m.ext[:sets][:G_wind]
     L = m.ext[:sets][:L]
     L_ac = m.ext[:sets][:L_ac]
     #W_ac = m.ext[:sets][:W_ac]
@@ -84,8 +85,9 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     demand = m.ext[:parameters][:demand]
     d= m.ext[:parameters][:d]
     wind_per_node= m.ext[:parameters][:wind_per_node]
-    total_wind= m.ext[:parameters][:total_wind]
+    #total_wind= m.ext[:parameters][:total_wind]
     capacity_factor_solar= m.ext[:parameters][:capacity_factor_solar]
+    capacity_factor_wind= m.ext[:parameters][:capacity_factor_wind]
     upramp = m.ext[:parameters][:upramp]
     downramp = m.ext[:parameters][:downramp]
     MUT = m.ext[:parameters][:MUT]
@@ -193,11 +195,8 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     
 
     # Other variables
-    rcu=m.ext[:variables][:rcu]=@variable(m,[t=T],lower_bound=0, upper_bound=total_wind["Nordic"][t], base_name="rcu") #Renewable curtailment
-    #Solar generator variables
-    pg_solar = m.ext[:variables][:pg_solar] = @variable(m, [g=G_solar,t=T],lower_bound=0, upper_bound=pmax[g], base_name = "pg_solar") # active power generation solar
-
-    
+    #rcu=m.ext[:variables][:rcu]=@variable(m,[t=T],lower_bound=0, upper_bound=total_wind["Nordic"][t], base_name="rcu") #Renewable curtailment
+ 
     
     #Second stage variables
     
@@ -257,20 +256,22 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
  #Nodal power balance constraint AC taken from https://github.com/Electa-Git/OPES/blob/main/opf_acdc/build_ac_opf_acdc_tap.jl line 421
         m.ext[:constraints][:power_balance] = @constraint(m, [t=T],
-        sum(pg[g,t] for g in TG )+sum(pg[g,t] for g in G_reservoir)+sum(pg[g,t] for g in G_pump)+sum(pg[g,t] for g in G_solar)-sum(p_charge_pump[g,t] for g in G_pump)+total_wind["Nordic"][t]-sum(rcu[t])-sum(d["$n"][t] for n in keys(d))+sum(psd[s,t] for s in S )-sum(psc[s,t] for s in S ) -sum(pe[e,t] for e in E ) -sum(pe_compressor[e,t] for e in E )== 0 #3.7
+        sum(pg[g,t] for g in TG )+sum(pg[g,t] for g in G_reservoir)+sum(pg[g,t] for g in G_pump)+sum(pg[g,t] for g in G_solar)+sum(pg[g,t] for g in G_wind)-sum(p_charge_pump[g,t] for g in G_pump)-sum(d["$n"][t] for n in keys(d))+sum(psd[s,t] for s in S )-sum(psc[s,t] for s in S ) -sum(pe[e,t] for e in E ) -sum(pe_compressor[e,t] for e in E )== 0 #3.7
         )
 
 
 
 
-    m.ext[:constraints][:renewable_curtailment] = @constraint(m, [t=T],
-    
-        rcu[t] <= total_wind["Nordic"][t]
+#Solar generation constraint
+    m.ext[:constraints][:solar_generation] = @constraint(m, [g=G_solar,t=T],
+        pg[g,t] <= capacity_factor_solar["Nordic"][t]*pmax[g]
     )
 
-    m.ext[:constraints][:solar_generation] = @constraint(m, [g=G_solar,t=T],
-        pg[g,t] == capacity_factor_solar["Nordic"][t]*pmax[g]
+    #wind gneration constraint
+    m.ext[:constraints][:wind_generation] = @constraint(m, [g=G_wind,t=T],
+        pg[g,t] <= capacity_factor_wind["Nordic"][t]*pmax[g]
     )
+
     m.ext[:constraints][:max_gen_power_TG] = @constraint(m, [g=TG,t=T],
         pg[g,t]+rg_lg1[g,t] <= pmax[g]*zg[g,t]
         )#3.11

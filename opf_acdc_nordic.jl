@@ -67,7 +67,7 @@ optimize!(m)
 # plotfunction_frequency_several_res_var_without_loss_res!(m) # Plot the results
 #printparameters_frequency_several_res_var_without_loss_res!(m) # Print the results
 
-plotfunction_frequency_Nordic!(m) # Plot the results
+    plotfunction_frequency_Nordic!(m) # Plot the results
 
 
 #printparameters_frequency_Nordic!(m) # Plot the results
