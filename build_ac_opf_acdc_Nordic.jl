@@ -266,10 +266,16 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     m.ext[:constraints][:solar_generation] = @constraint(m, [g=G_solar,t=T],
         pg[g,t] <= capacity_factor_solar["Nordic"][t]*pmax[g]
     )
+    m.ext[:constraints][:solar_reserve] = @constraint(m, [g=G_solar,t=T],
+        rg_lg1[g,t] == 0
+    )
 
     #wind gneration constraint
     m.ext[:constraints][:wind_generation] = @constraint(m, [g=G_wind,t=T],
         pg[g,t] <= capacity_factor_wind["Nordic"][t]*pmax[g]
+    )
+    m.ext[:constraints][:wind_reserve] = @constraint(m, [g=G_wind,t=T],
+        rg_lg1[g,t]==0
     )
 
     m.ext[:constraints][:max_gen_power_TG] = @constraint(m, [g=TG,t=T],

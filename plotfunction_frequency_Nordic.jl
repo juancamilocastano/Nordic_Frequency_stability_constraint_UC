@@ -27,6 +27,7 @@ function plotfunction_frequency_Nordic!(m::Model)
     G_biomass = m.ext[:sets][:G_biomass]
     G_oil = m.ext[:sets][:G_oil]
     G_solar = m.ext[:sets][:G_solar]
+    G_wind = m.ext[:sets][:G_wind]
     
     T= m.ext[:sets][:t]
 
@@ -179,7 +180,6 @@ esvec= [es[s,t] for s in S, t in T]
 pg=JuMP.value.(m.ext[:variables][:pg])*baseMVA
 pgvec= [pg[g,t] for g in G, t in T]
 pg1= [pg[g,t] for g in G, t in T]
-pgpump_vec=[pg[g,t] for g in G_pump, t in T]
 e_pump=JuMP.value.(m.ext[:variables][:e_pump])*baseMVA
 epump_vec=[e_pump[g,t] for g in G_pump, t in T]
 p_charge_pump=JuMP.value.(m.ext[:variables][:p_charge_pump])*baseMVA
@@ -283,7 +283,7 @@ ax_storage_pump = fig_storage_pump[1, 1] = Axis(fig_storage_pump,
     ylabel = "Power (MW) and Storage (Mwh)"
 )
 lines!(ax_storage_pump, P_charge_pump_vec[5, :], label = "charging power pump")
-lines!(ax_storage_pump, epump_vec[5, :], label = "Energy stored pump")
+#lines!(ax_storage_pump, epump_vec[5, :], label = "Energy stored pump")
 lines!(ax_storage_pump, pgpump_vec[5, :], label = "Generated power pump")
 fig_storage_pump[1, 2] = Legend(fig_storage_pump, ax_storage_pump, "Storage Pump Power and Energy", framevisible = false)
 fig_storage_pump
@@ -514,5 +514,17 @@ for (name, fig) in [
     save(joinpath(folder, name), fig)
 end
 
+Inertia_nadir_vec=round.(Inertia_nadir_vec, digits=2)
+plg1vec=round.(plg1vec, digits=2)
+total_re=round.(vec(sum(re_lg1vec, dims=1)), digits=2)
+total_rs=round.(vec(sum(rs_lg1vec, dims=1)), digits=2)
+total_rg=round.(vec(sum(rg_lg1vec, dims=1)), digits=2)
+
+
+open(joinpath(folder, "output.txt"), "w") do io
+    for x in eachindex(Inertia_nadir_vec)
+        println(io, "Hour", x, "-> H=", Inertia_nadir_vec[x], ",  Ploss=", plg1vec[x], ",  Re=", total_re[x], ",  Rb=", total_rs[x], ",  Rg=", total_rg[x])
+    end
 end
 
+end
