@@ -244,10 +244,18 @@ lines!(ax_procured_inertia, Procured_inertia_vec, label = "Procured Inertia")
 fig_procured_inertia[1, 2] = Legend(fig_procured_inertia, ax_procured_inertia, "Inertia", framevisible = false)
 fig_procured_inertia
 
+hydrogen_demand=Dict()
+E=keys(Eloadfactor)
+for t in T
+    for e in E
+    hydrogen_demand[t,e]=Eloadfactor[e] * Epmax[e] / Eefficiency[e];
+    end
+end
+hydrogen_demand_vec=vec([hydrogen_demand[t,e] for e in E, t in T])*baseKG
 
 fig1 = Figure()
 ax = fig1[1, 1] = Axis(fig1,
-    title = "Storage and Hydrogen flows Area 1",
+    title = "Storage, Hydrogen flow, and Hydrogen demand",
     xlabel = "Time (hours)",
     ylabel = "Hydrogen Flow (Kg/h) and Storage (Kg)"
 )
@@ -256,10 +264,9 @@ lines!(ax, hfginyectvec[1, :], label = "Hydrogen injected")
 lines!(ax, hssvec[1, :], label = "Hydrogen stored")
 lines!(ax, hfevec[1, :], label = "Hydrogen Electrolyzer")
 lines!(ax, hfgconsumvec[1, :], label = "Hydrogen consumed")
-
-# Legend in separate panel
+lines!(ax, hydrogen_demand_vec, label = "Hydrogen demand")
+lines!(ax, hydrogen_demand_vec+hfginyectvec[1, :], label = "Hydrogen demand plus Hydrogen injected", linestyle=:dash)
 fig1[1, 2] = Legend(fig1, ax, "Hydrogen Flows", framevisible = false)
-
 fig1
 
 
@@ -526,5 +533,6 @@ open(joinpath(folder, "output.txt"), "w") do io
         println(io, "Hour", x, "-> H=", Inertia_nadir_vec[x], ",  Ploss=", plg1vec[x], ",  Re=", total_re[x], ",  Rb=", total_rs[x], ",  Rg=", total_rg[x])
     end
 end
+
 
 end
