@@ -2,7 +2,7 @@ mpc.version = '2';
 mpc.baseMVA = 100.0;
 mpc.baseKG=100;
 mpc.frequency1=50;
-mpc.rocof=0.5;
+mpc.rocof1=1;
 mpc.deltaf=1;
 mpc.wind=98160;%=40760+50873+6527
 mpc.solar=36731;%=9849+26882
@@ -518,7 +518,7 @@ mpc.gen_extra_oil = [
 %% Electrolyzer data
 %  1-AC_bus   2-area   3-Pmax_MW   4-Pmin_MW   5-eta_ely_MWh_per_kg   6-LoadFactor   7-max_hydrog_flow_kg   8-Smax_kg    9-Smin_kg   10-S0_kg   11-ST_kg   12-DeployTime_s   13-ReserveCost_£_per_MW_h   14-eta_c   15-eta_d   16-StartupCost_£   17-CompressEnergy_MWh_per_kg   18-Hydrogen_market_price_Eur_per_kg
 mpc.elec = [
-    0   0   1000   100   0.058   0.8   17286   0   0   0   0   0.2   15.3   0   0   855.5   0.00167   4;
+    0   0   1000   100   0.058   0.8   17286   413790   143.6782   0   0   0.2   15.3   0   0   855.5   0.00167   4;
 ];
 
 %% BESS data (custom)

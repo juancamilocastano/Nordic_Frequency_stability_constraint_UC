@@ -130,6 +130,10 @@ function plotfunction_frequency_Nordic!(m::Model)
     Sreservecost = m.ext[:parameters][:Sreservecost]
     storage_bus = m.ext[:parameters][:storage_bus]
 
+    #capacity factor
+    capacity_factor_solar=m.ext[:parameters][:capacity_factor_solar]
+    capacity_factor_wind=m.ext[:parameters][:capacity_factor_wind]
+
 
     all_contingencies = m.ext[:sets][:all_contingencies]
     TG=vcat(G_nuclear, G_gas, G_biomass, G_oil) #Thermal generation
@@ -159,6 +163,54 @@ pgpump_vec=[pg[g,t] for g in G_pump, t in T]
 PT_vec= [pg[g,t] for g in TG, t in T]
 PS_vec= [pg[g,t] for g in G_solar, t in T]
 PW_vec= [pg[g,t] for g in G_wind, t in T]
+
+max_generator_wind = Dict{String, String}()
+
+
+for t in axes(pg, 2)
+    max_val = -Inf
+    max_key_dim1 = nothing
+
+    for g in G_wind
+        if pg[g, t] > max_val
+            max_val = pg[g, t]
+            max_key_dim1 = g
+        end
+    end
+
+    max_generator_wind[t] = max_key_dim1
+
+end
+
+max_generator_reservoir = Dict{String, String}()
+for t in axes(pg, 2)
+    max_valr = -Inf
+    max_key_dimr = nothing
+
+    for g in G_reservoir
+        if pg[g, t] > max_valr
+            max_valr = pg[g, t]
+            max_key_dimr = g
+        end
+    end
+    max_generator_reservoir[t] = max_key_dimr
+    
+end
+
+
+max_wind_nom_unit=Dict{eltype(T), Float64}()
+max_reservoir_nom_unit=Dict{eltype(T), Float64}()
+for t in T
+    max_wind_nom_unit[t]=capacity_factor_wind["Nordic"][t]*pmax[max_generator_wind[t]]*baseMVA
+    max_reservoir_nom_unit[t]=pmax[max_generator_reservoir[t]]*baseMVA
+end
+
+#This value is the maximum generation bound of the the wind and hydro generators that are producing the most at each hour
+max_wind_nom_unit_vec=[v for (k,v) in sort(collect(max_wind_nom_unit), by=x->parse(Int, x[1]))]
+max_reservoir_nom_unit_vec=[v for (k,v) in sort(collect(max_reservoir_nom_unit), by=x->parse(Int, x[1]))]
+
+
+
 pev=JuMP.value.(m.ext[:variables][:pe])*baseMVA
 pevec= [pev[e,t] for e in E, t in T]
 hfe=JuMP.value.(m.ext[:variables][:hfe])*baseKG
@@ -498,6 +550,25 @@ figmaximum_generation_per_technology[1, 2] = Legend(
 )
 figmaximum_generation_per_technology
 
+fig_difference_maximum_generation = Figure()    
+ax_difference_maximum_generation = fig_difference_maximum_generation[1, 1] = Axis(
+    fig_difference_maximum_generation,
+    title  = "wind generation of the most generating unit vs maximum nominal wind generation of the most generating unit",
+    xlabel = "Time (hours)",
+    ylabel = "Power (MW)"
+)
+lines!(ax_difference_maximum_generation,
+    max_wind_nom_unit_vec ,
+    label = "Maximum nominal wind generation of the most generating unit",
+    color = :green
+)
+lines!(ax_difference_maximum_generation,
+    vec(maximum(PW_vec, dims=1)),
+    label = "Wind generation of the most generating unit",
+    color = :blue
+)
+fig_difference_maximum_generation
+
 
 
 #Folder to save the figures
@@ -517,6 +588,8 @@ for (name, fig) in [
     ("storage_pump.png", fig_storage_pump),
     ("Procured_inertia.png", fig_procured_inertia),
     ("Demand_and_Generation.png", figdemand_and_generation),
+    ("Maximum_generation_per_technology.png", figmaximum_generation_per_technology),
+    ("Difference_maximum_generation.png", fig_difference_maximum_generation)
 ]
     save(joinpath(folder, name), fig)
 end

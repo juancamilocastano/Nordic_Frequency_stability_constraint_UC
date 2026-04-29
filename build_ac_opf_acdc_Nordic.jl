@@ -47,6 +47,7 @@ function build_ac_opf_acdc_Nordic!(m::Model)
     f1 = m.ext[:parameters][:f1]
 
     deltaf = m.ext[:parameters][:deltaf]
+    rocof1 = m.ext[:parameters][:rocof1]
          
 
     # AC network
@@ -556,7 +557,11 @@ function build_ac_opf_acdc_Nordic!(m::Model)
         Inertia_nadir_frequency_1[t]=sum((zg[g,t]-δg[g,t])*ic[g]*pmax[g] for g in G)
 
     end
-    
+
+    #RoCoF constraint
+    m.ext[:constraints][:rocof_constraint_plg_1]= @constraint(m, [t in T],
+        f1*plg1[t] <= rocof1*(2*Inertia_nadir_frequency_1[t] )
+    )
 
   #bounding the FFR and FCR contributions of all generator andconverter assets
   m.ext[:constraints][:fcr_bound_gen_lg1]= @constraint(m, [g in G, t in T],

@@ -202,7 +202,7 @@ function process_parameters!(m::Model, data::Dict, ts::DataFrame, tsw::DataFrame
     #Frequency stability parameters
     f1= m.ext[:parameters][:f1]= data["frequency1"]
     # f2= m.ext[:parameters][:f2]= data["frequency2"]
-    #rocof1= m.ext[:parameters][:rocof1]= data["rocof1"]
+    rocof1= m.ext[:parameters][:rocof1]= data["rocof1"]
     # rocof2= m.ext[:parameters][:rocof2]= data["rocof2"]
     deltaf= m.ext[:parameters][:deltaf]= data["deltaf"]
     # deltaf2= m.ext[:parameters][:deltaf2]= data["deltaf2"]

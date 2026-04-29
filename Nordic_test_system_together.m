@@ -2,7 +2,7 @@ mpc.version = '2';
 mpc.baseMVA = 100.0;
 mpc.baseKG=17286;
 mpc.frequency1=50;
-mpc.rocof=0.5;
+mpc.rocof1=1;
 mpc.deltaf=1;
 
 
@@ -1219,13 +1219,13 @@ mpc.genextra = [
 %% Electrolyzer data
 %  1-AC_bus   2-area   3-Pmax_MW   4-Pmin_MW   5-eta_ely_MWh_per_kg   6-LoadFactor   7-max_hydrog_flow_kg   8-Smax_kg    9-Smin_kg   10-S0_kg   11-ST_kg   12-DeployTime_s   13-ReserveCost_£_per_MW_h   14-eta_c   15-eta_d   16-StartupCost_£   17-CompressEnergy_MWh_per_kg   18-Hydrogen_market_price_Eur_per_kg
 mpc.elec = [
-    0   0   1000   100   0.058   0.8   17286   0   0   0   0   8.3   15.3   0.9   0.9   855.5   0.00167   4;
+    0   0   1000   100   0.058   0.8   17286   0   0   0   0   8.3   15.287   0.9   0.9   855.5   0.00167   4;
 ];
 
 %% BESS data (custom)
 %  1-AC_bus   2-area   3-Pmax_MW   4-Emax_MWh   5-DODmax   6-eta_c   7-eta_d   8-E_init_MWh   9-E_final_MWh   10-DeployTime_s   11-ReserveCost_$_per_MW_h
 mpc.bess = [
-    0           0        650         1311        0.8      0.9       0.9        393.3              393.3               8.3                15.3;
+    0           0        650         1311        0.8      0.9       0.9        393.3              393.3               8.3                15.287;
 ];
 
 %mpc.total_installed_capacity=sum(mpc.reservoir(:,9))+sum(mpc.pump(:,9))+sum(mpc.nuclear(:,9))+sum(mpc.gas(:,9))+sum(mpc.biomass(:,9))+sum(mpc.oil(:,9))+mpc.wind+mpc.solar;
