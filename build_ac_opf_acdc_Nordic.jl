@@ -262,7 +262,11 @@ function build_ac_opf_acdc_Nordic!(m::Model)
 
 
 
+#Online-unit contingency eligibility constraint
+    m.ext[:constraints][:event_binary_constraint]= @constraint(m, [g=G,t=T],
+    zg[g,t]>=δg[g,t])
 
+        
 #Solar generation constraint
     m.ext[:constraints][:solar_generation] = @constraint(m, [g=G_solar,t=T],
         pg[g,t] <= capacity_factor_solar["Nordic"][t]*pmax[g]

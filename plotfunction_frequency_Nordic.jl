@@ -394,6 +394,20 @@ lines!(ax9, rs9, label = "Reserve storage Area 1")
 fig9[1, 2] = Legend(fig9, ax9, "Reserve Area 1", framevisible = false)
 fig9
 
+fig_total_fast_reserve= Figure()
+axtotal_fast_reserve = fig_total_fast_reserve[1, 1] = Axis(fig_total_fast_reserve,
+     title  = "Total fast reserve allocation and Synchronous reserve",
+     xlabel = "Time (hours)",
+     ylabel = "Reserve Power (MW)"
+)
+total_rg = vec(sum(rg_lg1vec,    dims=1))
+total_fast = vec(sum(re_lg1vec,    dims=1))+vec(sum(rs_lg1vec,    dims=1))
+lines!(axtotal_fast_reserve, total_rg, label = "Reserve thermal generators Area 1")
+lines!(axtotal_fast_reserve, total_fast, label = "Total fast reserve Area 1")
+fig_total_fast_reserve[1, 2] = Legend(fig_total_fast_reserve, axtotal_fast_reserve, "Total Fast Reserve and Synchronous Reserve", framevisible = false)
+fig_total_fast_reserve
+
+
 
 
 fig15=Figure()
@@ -480,6 +494,7 @@ figsolar
 
 figwind=Figure()
 axwind = figwind[1, 1] = Axis(figwind,
+
      title  = "Wind generation",
      xlabel = "Time (hours)",
      ylabel = "Generation (MW)"
@@ -570,6 +585,40 @@ lines!(ax_difference_maximum_generation,
 fig_difference_maximum_generation
 
 
+total_re = vec(sum(re_lg1vec, dims=1))
+total_rs = vec(sum(rs_lg1vec, dims=1))
+total_rg = vec(sum(rg_lg1vec, dims=1))
+total_reserve = total_re + total_rs + total_rg
+
+
+Deltaf=Dict()
+TS=1:length(Inertia_nadir_vec)
+for t in TS
+    Deltaf[t]=((plg1vec[t]-total_re[t]-total_rs[t])^2*15/(total_rg[t])+(total_re[t]+total_rs[t])*0.2)*f1/(4000*Inertia_nadir_vec[t])
+end
+
+Deltaf_vec= [Deltaf[t] for t in TS]
+
+fig_Deltaf = Figure()
+ax_Deltaf = fig_Deltaf[1, 1] = Axis(
+    fig_Deltaf,
+    title  = "Frequency deviation",
+    xlabel = "Time (hours)",
+    ylabel = "Frequency deviation (Hz)"
+)
+lines!(ax_Deltaf,
+    Deltaf_vec,
+    label = "Frequency deviation",
+    color = :purple
+)
+fig_Deltaf[1, 2] = Legend(
+    fig_Deltaf,
+    ax_Deltaf,
+    "Frequency Deviation",
+    framevisible = false
+)
+fig_Deltaf
+
 
 #Folder to save the figures
 folder = raw"C:\Users\jcastano\.julia\dev\Nordic_Frequency_stability_constraint_UC\Figures"
@@ -589,23 +638,43 @@ for (name, fig) in [
     ("Procured_inertia.png", fig_procured_inertia),
     ("Demand_and_Generation.png", figdemand_and_generation),
     ("Maximum_generation_per_technology.png", figmaximum_generation_per_technology),
-    ("Difference_maximum_generation.png", fig_difference_maximum_generation)
+    ("Difference_maximum_generation.png", fig_difference_maximum_generation),
+    ("Frequency_deviation.png", fig_Deltaf)
 ]
     save(joinpath(folder, name), fig)
 end
 
-Inertia_nadir_vec=round.(Inertia_nadir_vec, digits=2)
-plg1vec=round.(plg1vec, digits=2)
-total_re=round.(vec(sum(re_lg1vec, dims=1)), digits=2)
-total_rs=round.(vec(sum(rs_lg1vec, dims=1)), digits=2)
-total_rg=round.(vec(sum(rg_lg1vec, dims=1)), digits=2)
+
+
+
 
 
 open(joinpath(folder, "output.txt"), "w") do io
     for x in eachindex(Inertia_nadir_vec)
-        println(io, "Hour", x, "-> H=", Inertia_nadir_vec[x], ",  Ploss=", plg1vec[x], ",  Re=", total_re[x], ",  Rb=", total_rs[x], ",  Rg=", total_rg[x])
+        println(io, "H_0=", Inertia_nadir_vec[x], ";  Ploss=", plg1vec[x], ";  re=", total_re[x], ";  rb=", total_rs[x], ";  rg=", total_rg[x], ";  Total_reserve=", total_reserve[x])
     end
 end
+
+function to_pgfplots(vec)
+    coords = ["($(i), $(v))" for (i, v) in enumerate(vec)]
+    return "\\addplot coordinates {\n " * join(coords, "\n") * "\n};"
+end
+
+
+print(to_pgfplots(vec(maximum(PW_vec, dims=1))))
+print(to_pgfplots(max_wind_nom_unit_vec))
+
+print(to_pgfplots( vec(maximum(PT_vec, dims=1))))
+
+print(to_pgfplots(vec(maximum(PS_vec, dims=1))))
+
+print(to_pgfplots(vec(maximum(PW_vec, dims=1))))
+
+print(to_pgfplots(vec(maximum(pgpump_vec, dims=1))))
+
+print(to_pgfplots(vec(maximum(pgreservoir_vec, dims=1))))
+
+print(to_pgfplots(Inertia_nadir_vec))
 
 
 end

@@ -54,8 +54,8 @@ build_ac_opf_acdc_Nordic!(m)
 
 # set_optimizer_attribute(m, "DualReductions", 0)
 # set_optimizer_attribute(m, "InfUnbdInfo", 1)
-set_optimizer_attribute(m, "MIPGap", 0.002) 
-optimize!(m)
+set_optimizer_attribute(m, "MIPGap", 0.0003) 
+@time optimize!(m)
 # @show termination_status(m)
 
 # compute_conflict!(m)
